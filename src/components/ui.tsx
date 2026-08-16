@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { AlertTriangle, Check, X } from 'lucide-react'
 import type { PaymentState } from '../types'
 
@@ -9,6 +9,39 @@ const STATUS_STYLE: Record<PaymentState, { chip: string; dot: string }> = {
   overdue: { chip: 'bg-maroon-soft text-maroon', dot: 'bg-maroon' },
   // Filled rather than tinted: months owed is a different order of problem.
   arrears: { chip: 'bg-maroon text-paper-2', dot: 'bg-paper-2' },
+}
+
+/**
+ * How much of the viewport the on-screen keyboard is covering.
+ *
+ * Android Chrome resizes the layout viewport, so `dvh` alone would cope; iOS
+ * Safari does not — it overlays the keyboard and only `visualViewport` reports
+ * it. Returns 0 where the API is missing, which is the pre-existing behaviour.
+ */
+function useKeyboardInset(active: boolean): number {
+  const [inset, setInset] = useState(0)
+
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!active || !vv) {
+      setInset(0)
+      return
+    }
+    const update = () => {
+      const covered = window.innerHeight - vv.height - vv.offsetTop
+      // Ignore a few px of browser-chrome jitter.
+      setInset(covered > 24 ? Math.round(covered) : 0)
+    }
+    update()
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+    }
+  }, [active])
+
+  return inset
 }
 
 export function StatusChip({ state, label }: { state: PaymentState; label: string }) {
@@ -37,6 +70,8 @@ export function Sheet({
   children: ReactNode
   footer?: ReactNode
 }) {
+  const keyboardInset = useKeyboardInset(open)
+
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
@@ -54,7 +89,13 @@ export function Sheet({
   if (!open) return null
 
   return (
-    <div className="no-print fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+    <div
+      className="no-print fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      // Lift the sheet clear of the on-screen keyboard. iOS Safari overlays the
+      // keyboard without resizing the layout viewport, so without this the
+      // footer — and its save button — sit underneath it.
+      style={{ paddingBottom: keyboardInset }}
+    >
       <div
         className="animate-fade absolute inset-0 bg-ink/35 backdrop-blur-[2px]"
         onClick={onClose}
@@ -64,7 +105,8 @@ export function Sheet({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="animate-sheet relative flex max-h-[92dvh] w-full flex-col rounded-t-2xl border border-rule bg-paper-2 shadow-2xl sm:max-w-lg sm:rounded-2xl"
+        className="animate-sheet relative flex w-full flex-col rounded-t-2xl border border-rule bg-paper-2 shadow-2xl sm:max-w-lg sm:rounded-2xl"
+        style={{ maxHeight: `calc(92dvh - ${keyboardInset}px)` }}
       >
         <header className="flex items-start gap-3 border-b border-rule-soft px-4 pt-4 pb-3">
           <div className="min-w-0 flex-1">

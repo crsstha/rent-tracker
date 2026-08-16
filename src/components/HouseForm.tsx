@@ -34,7 +34,11 @@ export function HouseForm({
       await updateHouse(house.id, { name: name.trim(), address: address.trim() || undefined })
       onSaved?.(house.id)
     } else {
-      onSaved?.(await createHouse({ name, address }))
+      // Must not be inlined as `onSaved?.(await createHouse(...))`: an optional
+      // call short-circuits its arguments, so with no onSaved passed (the
+      // common case) the house was never created at all.
+      const id = await createHouse({ name, address })
+      onSaved?.(id)
     }
     onClose()
   }

@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+
+import { byUrgency, needsAttention, summarise } from '#hooks/useData'
+import { billLines, blankBillInput, computeBill } from '#utils/billing'
 import {
   addMonths,
   formatDate,
@@ -7,17 +10,43 @@ import {
   monthRangeLabel,
   ordinal,
   recentMonths,
-} from '../src/lib/dates'
-import { MAX_LOOKBACK, arrearsFor, tenancyStart, tenantStatus, unpaidMonths } from '../src/lib/status'
-import { billLines, blankBillInput, computeBill } from '../src/lib/billing'
-import { byUrgency, needsAttention, summarise } from '../src/hooks/useData'
-import type { HistoryEntry, Tenant } from '../src/types'
+} from '#utils/dates'
+import {
+  addPayment,
+  allocate,
+  createEntry,
+  deriveStatus,
+  OverpaymentError,
+  removePayment,
+  settleEntry,
+} from '#utils/payments'
+import { arrearsFor, MAX_LOOKBACK, tenancyStart, tenantStatus, unpaidMonths } from '#utils/status'
+
+import type { HistoryEntry, Tenant } from '#types'
 
 const at = (iso: string) => new Date(iso)
 const NOW = at('2026-08-16T10:00:00')
 
+/** A month settled in full. */
 function paid(month: string, amount = 12000): HistoryEntry {
-  return { month, date: `${month}-05T10:00:00.000Z`, amount }
+  return createEntry({
+    month,
+    date: `${month}-05T10:00:00.000Z`,
+    totalAmount: amount,
+    payments: [{ id: `p-${month}`, amount, date: `${month}-05T10:00:00.000Z`, method: 'cash' }],
+  })
+}
+
+/** A month with money against it, but not all of it. */
+function partly(month: string, collected: number, total = 12000): HistoryEntry {
+  return createEntry({
+    month,
+    date: `${month}-05T10:00:00.000Z`,
+    totalAmount: total,
+    payments: [
+      { id: `p-${month}`, amount: collected, date: `${month}-05T10:00:00.000Z`, method: 'cash' },
+    ],
+  })
 }
 
 function tenant(over: Partial<Tenant> = {}): Tenant {
@@ -63,6 +92,92 @@ describe('tenantStatus', () => {
       history: [paid('2026-07')],
     })
     expect(tenantStatus(t, NOW).state).toBe('overdue')
+  })
+})
+
+describe('partial payments', () => {
+  it('derives status from what has been collected', () => {
+    expect(deriveStatus(12000, 0)).toBe('unpaid')
+    expect(deriveStatus(12000, 5000)).toBe('partially_paid')
+    expect(deriveStatus(12000, 12000)).toBe('paid')
+    // Overshoot cannot happen through addPayment, but the rule is defined.
+    expect(deriveStatus(12000, 13000)).toBe('paid')
+    // Nothing charged is nothing owed.
+    expect(deriveStatus(0, 0)).toBe('paid')
+  })
+
+  it('keeps a part-paid month outstanding for its balance only', () => {
+    const t = tenant({ startMonth: '2026-08', history: [partly('2026-08', 5000)] })
+    const status = tenantStatus(t, NOW)
+
+    expect(status.state).toBe('partial')
+    expect(status.arrearsAmount).toBe(7000)
+    expect(status.outstanding).toEqual([{ month: '2026-08', amount: 7000, partial: true }])
+    expect(status.label).toContain('7,000')
+  })
+
+  it('reads as partial before the due date too', () => {
+    const t = tenant({ dueDay: 25, history: [partly('2026-08', 4000)] })
+    expect(tenantStatus(t, NOW).state).toBe('partial')
+  })
+
+  it('values older part-paid months at their balance, not full rent', () => {
+    const t = tenant({
+      startMonth: '2026-06',
+      history: [partly('2026-06', 9000), partly('2026-07', 2000)],
+    })
+    const arrears = arrearsFor(t, NOW)
+
+    // June owes 3,000, July owes 10,000, August has never been billed: 12,000.
+    expect(arrears.amount).toBe(3000 + 10000 + 12000)
+    expect(arrears.months).toEqual(['2026-06', '2026-07', '2026-08'])
+    expect(tenantStatus(t, NOW).state).toBe('arrears')
+  })
+
+  it('adds instalments until the month is settled', () => {
+    let entry = createEntry({ month: '2026-08', totalAmount: 12000 })
+    expect(entry.paymentStatus).toBe('unpaid')
+
+    entry = addPayment(entry, { amount: 5000, method: 'cash' })
+    expect(entry.amountPaid).toBe(5000)
+    expect(entry.amountDue).toBe(7000)
+    expect(entry.paymentStatus).toBe('partially_paid')
+
+    entry = addPayment(entry, { amount: 7000, method: 'wallet' })
+    expect(entry.paymentStatus).toBe('paid')
+    expect(entry.amountDue).toBe(0)
+    expect(entry.payments).toHaveLength(2)
+  })
+
+  it('refuses to take more than the month still owes', () => {
+    const entry = addPayment(createEntry({ month: '2026-08', totalAmount: 12000 }), {
+      amount: 10000,
+    })
+    expect(() => addPayment(entry, { amount: 2001 })).toThrow(OverpaymentError)
+    expect(() => addPayment(entry, { amount: 0 })).toThrow(OverpaymentError)
+    // Exactly the balance is fine.
+    expect(addPayment(entry, { amount: 2000 }).paymentStatus).toBe('paid')
+  })
+
+  it('falls back to partly paid when an instalment is removed', () => {
+    const entry = settleEntry(createEntry({ month: '2026-08', totalAmount: 12000 }))
+    expect(entry.paymentStatus).toBe('paid')
+
+    const reopened = removePayment(entry, entry.payments[0].id)
+    expect(reopened.paymentStatus).toBe('unpaid')
+    expect(reopened.amountDue).toBe(12000)
+  })
+
+  it('spreads a short payment over the oldest months first', () => {
+    const spread = allocate(15000, [
+      { month: '2026-08', due: 12000 },
+      { month: '2026-06', due: 12000 },
+      { month: '2026-07', due: 12000 },
+    ])
+    expect(spread).toEqual([
+      { month: '2026-06', amount: 12000 },
+      { month: '2026-07', amount: 3000 },
+    ])
   })
 })
 
@@ -151,7 +266,9 @@ describe('ordering and rollups', () => {
   })
 
   it('lists everything owed, plus due-soon, as needing attention', () => {
-    const attention = needsAttention([settled, upcoming, dueSoon, overdue, inArrears].sort(byUrgency))
+    const attention = needsAttention(
+      [settled, upcoming, dueSoon, overdue, inArrears].sort(byUrgency),
+    )
     expect(attention.map((r) => r.tenant.name)).toEqual(['Zenith', 'Om', 'Bina'])
   })
 
@@ -173,10 +290,20 @@ describe('ordering and rollups', () => {
     expect(s.arrears).toBe(24000)
     expect(s.arrearsTenants).toBe(1)
   })
+
+  it('counts a part payment in both collected and pending', () => {
+    const s = summarise([tenant({ history: [partly('2026-08', 5000)] })], NOW)
+    expect(s.collected).toBe(5000)
+    expect(s.pending).toBe(7000)
+    expect(s.partialCount).toBe(1)
+    expect(s.arrears).toBe(0)
+  })
 })
 
 describe('computeBill', () => {
   const base = blankBillInput(tenant(), NOW)
+  const dues = (months: string[], amount = 12000) =>
+    months.map((month) => ({ month, amount, partial: false }))
 
   it('charges rent alone by default', () => {
     expect(computeBill({ ...base, arrearsEnabled: false }).total).toBe(12000)
@@ -209,25 +336,33 @@ describe('computeBill', () => {
       waterEnabled: true,
       water: 500,
       arrearsEnabled: true,
-      arrearsMonths: ['2026-05', '2026-06', '2026-07'],
-      arrearsRate: 12000,
+      arrears: dues(['2026-05', '2026-06', '2026-07']),
     })
     expect(bill.subtotal).toBe(12500)
-    expect(bill.arrears).toEqual({ months: ['2026-05', '2026-06', '2026-07'], amount: 36000 })
+    expect(bill.arrears?.months).toEqual(['2026-05', '2026-06', '2026-07'])
+    expect(bill.arrears?.amount).toBe(36000)
     expect(bill.total).toBe(48500)
 
-    const dues = billLines(bill).at(-1)!
-    expect(dues.label).toContain('Previous dues')
-    expect(dues.amount).toBe(36000)
+    const line = billLines(bill).at(-1)!
+    expect(line.label).toContain('Previous dues')
+    expect(line.amount).toBe(36000)
+  })
+
+  it('carries each arrears month at its own balance', () => {
+    const bill = computeBill({
+      ...base,
+      arrearsEnabled: true,
+      arrears: [
+        { month: '2026-06', amount: 3000, partial: true },
+        { month: '2026-07', amount: 12000, partial: false },
+      ],
+    })
+    expect(bill.arrears?.amount).toBe(15000)
+    expect(bill.total).toBe(27000)
   })
 
   it('drops the arrears line when the toggle is off', () => {
-    const bill = computeBill({
-      ...base,
-      arrearsEnabled: false,
-      arrearsMonths: ['2026-06'],
-      arrearsRate: 12000,
-    })
+    const bill = computeBill({ ...base, arrearsEnabled: false, arrears: dues(['2026-06']) })
     expect(bill.arrears).toBeUndefined()
     expect(bill.total).toBe(bill.subtotal)
   })
@@ -272,7 +407,16 @@ describe('computeBill', () => {
 describe('formatting', () => {
   it('writes real ordinals for due days', () => {
     expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 28].map(ordinal)).toEqual([
-      '1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '28th',
+      '1st',
+      '2nd',
+      '3rd',
+      '4th',
+      '11th',
+      '12th',
+      '13th',
+      '21st',
+      '22nd',
+      '28th',
     ])
   })
 

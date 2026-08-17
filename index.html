@@ -9,7 +9,32 @@
     <title>Rent Register</title>
     <meta name="description" content="Track rent, tenants, and bills across your houses." />
     <meta name="theme-color" content="#7A1F2E" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
+
+    <!--
+      Stamp the saved theme before first paint. Without this the page renders
+      in the default palette for a frame and then swaps, which reads as a flash
+      on every cold start. Kept inline and dependency-free on purpose — it must
+      run before any bundle loads. Mirrors app/lib/theme/index.ts.
+    -->
+    <script>
+      ;(function () {
+        try {
+          var raw = localStorage.getItem('rent-register:appearance')
+          var parsed = raw ? JSON.parse(raw) : {}
+          var value = parsed.state || parsed || {}
+          var mode = value.mode || 'auto'
+          var dark =
+            mode === 'dark' ||
+            (mode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          var palette = (dark ? value.darkPalette : value.lightPalette) || 'terracotta'
+          document.documentElement.setAttribute('data-theme', palette)
+          document.documentElement.classList.toggle('dark', dark)
+        } catch (e) {
+          /* first run, or storage blocked — the CSS defaults cover it */
+        }
+      })()
+    </script>
 
     <!-- iOS home-screen install -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -32,6 +57,6 @@
     <div id="root"></div>
     <!-- Print target lives outside #root so nothing can clip the invoice. -->
     <div id="print-root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/app/index.tsx"></script>
   </body>
 </html>

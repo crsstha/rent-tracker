@@ -2,4 +2,5 @@
 # …) is rendered client-side, so anything that isn't a real file has to serve
 # index.html rather than 404. Hashed assets and the service worker are real
 # files and are matched before this rule.
+/index.html  /index.html  200
 /*  /index.html  200

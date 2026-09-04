@@ -1,7 +1,8 @@
+import { EXPENSE_CATEGORIES, PAYMENT_METHODS } from '#types'
 import { newId } from '#utils/id'
 import { money, recalcEntry } from '#utils/payments'
 
-import type { BillBreakdown, HistoryEntry, Payment, Tenant } from '#types'
+import type { BillBreakdown, Expense, HistoryEntry, Payment, Tenant } from '#types'
 
 /**
  * Schema evolution, in one place.
@@ -15,9 +16,12 @@ import type { BillBreakdown, HistoryEntry, Payment, Tenant } from '#types'
  * The same function runs against the Dexie store (on upgrade) and against
  * imported backup files, so a v1 backup restored into a v2 database lands in
  * exactly the shape a live upgrade produces.
+ *
+ * v3 adds the personal spending book. Nothing in a v1 or v2 file converts into
+ * an expense, so restoring one simply lands an empty book.
  */
 
-export const DATA_VERSION = 2
+export const DATA_VERSION = 3
 
 interface LegacyHistoryEntry {
   month?: unknown
@@ -95,6 +99,26 @@ export function lastSettled(
 /** Newest month first — the order the UI lists history in. */
 export function sortHistory(history: readonly HistoryEntry[]): HistoryEntry[] {
   return [...history].sort((a, b) => (a.month < b.month ? 1 : a.month > b.month ? -1 : 0))
+}
+
+/**
+ * An untrusted expense row from a backup file, forced into shape.
+ *
+ * The day key is the one field worth being strict about: everything the
+ * spending book computes groups by it, and a malformed key would quietly
+ * vanish from every total rather than showing up wrong.
+ */
+export function normaliseExpense(raw: Expense, fallbackDay: string): Expense {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(raw.day) ? raw.day : fallbackDay
+  return {
+    id: raw.id,
+    day,
+    amount: money(raw.amount),
+    category: EXPENSE_CATEGORIES.includes(raw.category) ? raw.category : 'other',
+    note: raw.note || undefined,
+    method: PAYMENT_METHODS.includes(raw.method) ? raw.method : 'cash',
+    createdAt: raw.createdAt ?? new Date().toISOString(),
+  }
 }
 
 export function upgradeTenant(raw: Tenant): Tenant {

@@ -37,9 +37,10 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['favicon.svg', 'icons/apple-touch-icon.png'],
       manifest: {
-        name: 'Rent Register',
-        short_name: 'Rent Register',
-        description: 'Track rent, tenants, and bills across your houses.',
+        name: 'Khata (खाता)',
+        short_name: 'Khata',
+        description:
+          'Track rent, tenants and bills across your houses, and your own daily spending.',
         start_url: '/',
         scope: '/',
         display: 'standalone',

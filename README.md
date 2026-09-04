@@ -1,4 +1,4 @@
-# Rent Register
+# Khata (खाता)
 
 An installable, offline-first PWA for tracking tenants, rent due dates, utility bills and payment
 history across one or more houses. All data lives in the phone's own storage — no account, no
@@ -207,7 +207,7 @@ removed. Because the derived fields are recomputed rather than stored, that reve
 Data lives only on the device, so **Settings → Export backup** writes a single JSON file of
 everything. Import offers _replace_ (restore onto a fresh install) or _merge_ (add only records not
 already present). Imported files are validated before they go near the database — a file that isn't
-a Rent Register backup, or one from a newer app version, is rejected with a readable message.
+a Khata backup, or one from a newer app version, is rejected with a readable message.
 
 An uninstall, or clearing site data, wipes everything. That is expected behaviour, not a bug.
 

@@ -1,4 +1,4 @@
-import type { House, Tenant } from '#types'
+import type { Expense, House, Tenant } from '#types'
 
 /**
  * The contract every storage backend implements.
@@ -45,10 +45,12 @@ export interface DataBackend {
   readonly name: BackendName
   readonly houses: DataAdapter<House>
   readonly tenants: DataAdapter<Tenant>
+  readonly expenses: DataAdapter<Expense>
   /**
-   * Run several writes atomically. Dexie maps this to an IndexedDB
-   * transaction; Firestore would map it to `runTransaction`/`writeBatch`. A
-   * backend that cannot offer atomicity must still run the callback.
+   * Run several writes atomically, across any of the stores. Dexie maps this
+   * to an IndexedDB transaction; Firestore would map it to
+   * `runTransaction`/`writeBatch`. A backend that cannot offer atomicity must
+   * still run the callback.
    */
   transaction<T>(fn: () => Promise<T>): Promise<T>
   /** Resolves once the store is open and migrated. */

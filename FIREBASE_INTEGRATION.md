@@ -1,6 +1,6 @@
 # Firebase integration — plan, not yet wired
 
-Rent Register stores everything locally in IndexedDB via Dexie. Nothing is
+Khata stores everything locally in IndexedDB via Dexie. Nothing is
 uploaded and no account is needed. This document describes how Firestore gets
 added later **without rewriting the app**, and what has already been put in
 place for it.

@@ -39,4 +39,5 @@ export function isFirebaseConfigured(config = readFirebaseConfig()): config is F
 export const COLLECTIONS = {
   houses: 'houses',
   tenants: 'tenants',
+  expenses: 'expenses',
 } as const

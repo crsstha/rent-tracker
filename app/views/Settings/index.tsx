@@ -10,7 +10,7 @@ import { Card } from '#components/ui/card'
 import { Progress } from '#components/ui/progress'
 import { toast } from '#components/ui/sonner'
 import { Switch } from '#components/ui/switch'
-import { useAllTenants, useHouses } from '#hooks/useData'
+import { useAllTenants, useExpenses, useHouses } from '#hooks/useData'
 import {
   BackupParseError,
   exportBackup,
@@ -36,6 +36,7 @@ function Settings() {
   const routeTo = useRouting()
   const houses = useHouses()
   const tenants = useAllTenants()
+  const expenses = useExpenses()
   const fileInput = useRef<HTMLInputElement>(null)
 
   const [pending, setPending] = useState<BackupFile | null>(null)
@@ -55,7 +56,6 @@ function Settings() {
     })()
   }, [])
 
-  const entryCount = (tenants ?? []).reduce((n, t) => n + t.history.length, 0)
   const paymentCount = (tenants ?? []).reduce(
     (n, t) => n + t.history.reduce((m, h) => m + h.payments.length, 0),
     0,
@@ -93,16 +93,16 @@ function Settings() {
     setPending(null)
     await importBackup(file, mode)
     toast.success(
-      `${mode === 'replace' ? 'Restored' : 'Merged'} ${file.houses.length} houses and ${file.tenants.length} tenants`,
+      `${mode === 'replace' ? 'Restored' : 'Merged'} ${file.houses.length} houses, ${file.tenants.length} tenants and ${file.expenses.length} expenses`,
     )
   }
 
   return (
     <Page
       title="Settings"
-      subtitle="Appearance, backup, storage & reminders"
-      backTo={routePath('houses')}
-      backLabel="All houses"
+      subtitle="Appearance, calendar, backup, storage & reminders"
+      backTo={routePath('home')}
+      backLabel="Home"
     >
       <Section title="Appearance">
         <Link
@@ -111,9 +111,9 @@ function Settings() {
         >
           <Palette size={16} className="text-primary" />
           <div className="flex-1">
-            <div className="text-[15px] font-medium">Theme & entry preferences</div>
+            <div className="text-[15px] font-medium">Theme, calendar & entry preferences</div>
             <div className="text-[12.5px] text-muted-foreground">
-              Light / dark mode, palettes, and how entries behave
+              Light / dark mode, palettes, Bikram Sambat or Gregorian dates
             </div>
           </div>
           <ChevronRight size={18} className="text-muted-foreground" />
@@ -125,8 +125,8 @@ function Settings() {
           <div className="grid grid-cols-4 divide-x divide-rule-soft">
             <Stat label="Houses" value={String(houses?.length ?? 0)} />
             <Stat label="Tenants" value={String(tenants?.length ?? 0)} />
-            <Stat label="Months" value={String(entryCount)} />
             <Stat label="Payments" value={String(paymentCount)} />
+            <Stat label="Expenses" value={String(expenses?.length ?? 0)} />
           </div>
           <p className="px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">
             Everything is stored in this device’s own browser storage. Nothing is uploaded, and no
@@ -248,7 +248,7 @@ function Settings() {
       </Section>
 
       <p className="mt-8 text-center text-[12px] text-muted-foreground">
-        Rent Register · works offline · v{__APP_VERSION__}
+        Khata · works offline · v{__APP_VERSION__}
       </p>
 
       <FormSheet
@@ -274,8 +274,9 @@ function Settings() {
         <div className="space-y-3 text-[14px] leading-relaxed">
           <p>
             This file contains{' '}
-            <strong className="font-semibold">{pending?.houses.length ?? 0} houses</strong> and{' '}
-            <strong className="font-semibold">{pending?.tenants.length ?? 0} tenants</strong>.
+            <strong className="font-semibold">{pending?.houses.length ?? 0} houses</strong>,{' '}
+            <strong className="font-semibold">{pending?.tenants.length ?? 0} tenants</strong> and{' '}
+            <strong className="font-semibold">{pending?.expenses.length ?? 0} expenses</strong>.
           </p>
           <div className="rounded-lg bg-primary-soft px-3 py-2.5 text-[13.5px] text-primary">
             <strong className="font-semibold">Replace</strong> deletes everything currently on this
@@ -288,7 +289,7 @@ function Settings() {
       <ConfirmDialog
         open={confirmWipe}
         title="Erase all data?"
-        body="Every house, tenant and payment record on this device will be deleted. Export a backup first if you might want any of it back."
+        body="Every house, tenant, payment record and logged expense on this device will be deleted. Export a backup first if you might want any of it back."
         confirmLabel="Erase everything"
         onCancel={() => setConfirmWipe(false)}
         onConfirm={async () => {

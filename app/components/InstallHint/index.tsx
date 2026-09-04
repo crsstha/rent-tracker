@@ -65,7 +65,7 @@ export function InstallHint() {
       <div className="flex items-start gap-3 rounded-card border border-gold/50 bg-card px-4 py-3">
         <Smartphone size={18} className="mt-0.5 shrink-0 text-gold" />
         <div className="min-w-0 flex-1">
-          <div className="font-display text-[14px] font-semibold">Install Rent Register</div>
+          <div className="font-display text-[14px] font-semibold">Install Khata</div>
           <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
             {deferred
               ? 'Add it to your home screen so it opens instantly and works without signal.'

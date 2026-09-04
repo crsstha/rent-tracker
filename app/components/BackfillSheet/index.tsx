@@ -8,8 +8,10 @@ import { toast } from '#components/ui/sonner'
 import { useTenant } from '#hooks/useData'
 import { backfillMonths } from '#lib/actions'
 import { cn } from '#lib/utils'
+import { useDateSystem } from '#store/preferences'
 import { useUI } from '#store/ui'
-import { monthLabel, recentMonths } from '#utils/dates'
+import { monthShortIn } from '#utils/calendar'
+import { recentMonths } from '#utils/dates'
 import { formatMoney } from '#utils/format'
 import { isSettled, outstandingMonths } from '#utils/status'
 
@@ -18,6 +20,7 @@ const WINDOW = 12
 
 export function BackfillSheet() {
   const tenantId = useUI((s) => s.backfillTenantId)
+  const system = useDateSystem()
   const close = () => useUI.getState().openBackfill(null)
   const tenant = useTenant(tenantId)
 
@@ -135,7 +138,9 @@ export function BackfillSheet() {
                       checked={checked || already}
                       className={cn('pointer-events-none', already && 'border-success bg-success')}
                     />
-                    <span className="flex-1 text-[15px] font-medium">{monthLabel(m)}</span>
+                    <span className="flex-1 text-[15px] font-medium">
+                      {monthShortIn(m, system)}
+                    </span>
                     <span className="text-[12.5px] text-muted-foreground">
                       {already
                         ? 'already settled'

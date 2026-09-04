@@ -3,7 +3,7 @@ import { liveQuery, type Table } from 'dexie'
 import type { DataAdapter, DataBackend, Entity, ListQuery } from '../types'
 import { db, RentRegisterDB } from './schema'
 
-import type { House, Tenant } from '#types'
+import type { Expense, House, Tenant } from '#types'
 
 /**
  * The live backend. Every read is served from IndexedDB and every `subscribe`
@@ -78,7 +78,9 @@ export function createDexieBackend(instance: RentRegisterDB = db): DataBackend {
     name: 'dexie',
     houses: createAdapter<House>(instance.houses as unknown as Table<House, string>),
     tenants: createAdapter<Tenant>(instance.tenants as unknown as Table<Tenant, string>),
-    transaction: (fn) => instance.transaction('rw', instance.houses, instance.tenants, () => fn()),
+    expenses: createAdapter<Expense>(instance.expenses as unknown as Table<Expense, string>),
+    transaction: (fn) =>
+      instance.transaction('rw', instance.houses, instance.tenants, instance.expenses, () => fn()),
     ready: () => instance.open().then(() => undefined),
   }
 }

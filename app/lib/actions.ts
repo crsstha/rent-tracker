@@ -1,5 +1,5 @@
 import { type BillInput, computeBill } from '#utils/billing'
-import { monthKey } from '#utils/dates'
+import { dayKey, monthKey } from '#utils/dates'
 import { newId } from '#utils/id'
 import {
   addPayment,
@@ -15,9 +15,9 @@ import {
 import { outstandingMonths } from '#utils/status'
 
 import { lastSettled, sortHistory } from './db/migrations'
-import { houses, tenants, transaction } from './db'
+import { expenses, houses, tenants, transaction } from './db'
 
-import type { BillBreakdown, HistoryEntry, House, Payment, Tenant } from '#types'
+import type { BillBreakdown, Expense, HistoryEntry, House, Payment, Tenant } from '#types'
 
 /**
  * Every write in the app goes through here, and nothing here talks to a
@@ -103,6 +103,44 @@ export async function deleteTenant(id: string): Promise<void> {
 export function clampDueDay(day: number): number {
   const n = Math.round(Number(day) || 1)
   return Math.min(28, Math.max(1, n))
+}
+
+// ---------- personal spending ----------
+
+export type ExpenseDraft = Pick<Expense, 'amount' | 'category'> &
+  Partial<Pick<Expense, 'day' | 'note' | 'method'>>
+
+/**
+ * Log one day's spending. Unlike a rent payment there is nothing to reconcile
+ * against — no charge, no balance, no status — so an expense is written as
+ * given and every total is derived from the rows at read time.
+ */
+export async function createExpense(draft: ExpenseDraft): Promise<string> {
+  const expense: Expense = {
+    id: newId(),
+    day: draft.day || dayKey(),
+    amount: money(draft.amount),
+    category: draft.category,
+    note: draft.note?.trim() || undefined,
+    method: draft.method ?? 'cash',
+    createdAt: new Date().toISOString(),
+  }
+  await expenses.create(expense)
+  return expense.id
+}
+
+export async function updateExpense(id: string, draft: ExpenseDraft): Promise<void> {
+  await expenses.update(id, {
+    day: draft.day || dayKey(),
+    amount: money(draft.amount),
+    category: draft.category,
+    note: draft.note?.trim() || undefined,
+    method: draft.method ?? 'cash',
+  })
+}
+
+export async function deleteExpense(id: string): Promise<void> {
+  await expenses.delete(id)
 }
 
 // ---------- payments ----------
@@ -226,6 +264,40 @@ export async function backfillMonths(id: string, payments: PastPayment[]): Promi
           manual: true,
           payments: [{ id: newId(), amount: money(amount), date: now, method: 'cash' }],
         }),
+      )
+    }
+    await applyHistory(tenant, history)
+  })
+}
+
+export interface AdvanceOptions {
+  method?: Payment['method']
+  reference?: string
+  note?: string
+}
+
+/**
+ * Settle one or more months in a single sitting, including months not yet
+ * due — the "tenant wants to pay a few months ahead" case. Each month is
+ * charged at the tenant's current rent (or keeps whatever charge it already
+ * had) and settled in full; a month that's already fully paid is left alone
+ * so re-selecting it can't double-collect.
+ */
+export async function payInAdvance(
+  id: string,
+  months: string[],
+  options: AdvanceOptions = {},
+): Promise<void> {
+  await withTenant(id, async (tenant) => {
+    const now = new Date().toISOString()
+    let history = [...tenant.history]
+    for (const month of months) {
+      const existing = history.find((h) => h.month === month)
+      if (existing?.paymentStatus === 'paid') continue
+      const base = existing ?? createEntry({ month, date: now, totalAmount: tenant.rent })
+      history = upsertEntry(
+        history,
+        settleEntry({ ...base, advance: true }, { date: now, ...options }),
       )
     }
     await applyHistory(tenant, history)

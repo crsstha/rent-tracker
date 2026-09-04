@@ -1,7 +1,7 @@
 import type { DataAdapter, DataBackend, Entity, ListQuery, Unsubscribe } from '../types'
 import { COLLECTIONS, isFirebaseConfigured } from './config'
 
-import type { House, Tenant } from '#types'
+import type { Expense, House, Tenant } from '#types'
 
 /**
  * Firestore backend — SCAFFOLD ONLY. Nothing here runs today.
@@ -105,6 +105,7 @@ export function createFirebaseBackend(): DataBackend {
     name: 'firebase',
     houses: createAdapter<House>(COLLECTIONS.houses),
     tenants: createAdapter<Tenant>(COLLECTIONS.tenants),
+    expenses: createAdapter<Expense>(COLLECTIONS.expenses),
     transaction: <T>(_fn: () => Promise<T>): Promise<T> =>
       // TODO(firebase): runTransaction(firestore, () => _fn()) — note that
       // Firestore transactions must read before they write, so `actions.ts`

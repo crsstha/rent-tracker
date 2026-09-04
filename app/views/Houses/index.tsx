@@ -1,23 +1,26 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { Bell, Building2, Check, ChevronRight, Plus, Settings } from 'lucide-react'
+import { Bell, Building2, Check, ChevronRight, Plus } from 'lucide-react'
 
+import { DateSystemToggle } from '#components/DateSystemToggle'
 import { EmptyState } from '#components/EmptyState'
 import { HouseForm } from '#components/HouseForm'
-import { InstallHint } from '#components/InstallHint'
 import { Page, SectionHeading } from '#components/Page'
 import { Badge } from '#components/ui/badge'
 import { Card } from '#components/ui/card'
 import { Skeleton } from '#components/ui/skeleton'
 import { summarise, useAllTenants, useHouses } from '#hooks/useData'
 import { routePath } from '#root/hooks/useRouting'
-import { monthKey, monthLabelLong } from '#utils/dates'
+import { useDateSystem } from '#store/preferences'
+import { monthLabelIn } from '#utils/calendar'
+import { monthKey } from '#utils/dates'
 import { formatMoney } from '#utils/format'
 import { tenantStatus } from '#utils/status'
 
 import type { House, Tenant } from '#types'
 
 function Houses() {
+  const system = useDateSystem()
   const houses = useHouses()
   const tenants = useAllTenants()
   const [adding, setAdding] = useState(false)
@@ -46,17 +49,11 @@ function Houses() {
 
   return (
     <Page
-      title="Rent Register"
-      subtitle={monthLabelLong(monthKey())}
-      actions={
-        <Link to={routePath('settings')} className="cover-btn">
-          <Settings size={13} /> Settings
-        </Link>
-      }
+      title="Houses"
+      subtitle={monthLabelIn(monthKey(), system)}
+      actions={<DateSystemToggle variant="cover" />}
       className="pt-0"
     >
-      <InstallHint />
-
       <div className="pt-5">
         {!loading && houses.length > 0 && (
           <Card className="mb-5 overflow-hidden">

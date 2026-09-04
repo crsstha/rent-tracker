@@ -7,6 +7,7 @@ import {
   History,
   MoreHorizontal,
   Pencil,
+  PiggyBank,
   Receipt,
   Share2,
   Trash2,
@@ -34,10 +35,12 @@ import { useHouse, useTenant } from '#hooks/useData'
 import { deleteHistoryEntry, deleteTenant, settleArrears, settleMonth } from '#lib/actions'
 import { cn } from '#lib/utils'
 import useRouting, { routePath } from '#root/hooks/useRouting'
-import { type QuickActionId, usePreferences } from '#store/preferences'
+import { type QuickActionId, useDateSystem, usePreferences } from '#store/preferences'
 import { useUI } from '#store/ui'
 import { billLines } from '#utils/billing'
-import { formatDate, monthKey, monthLabel, monthLabelLong, ordinal } from '#utils/dates'
+import type { DateSystem } from '#utils/calendar'
+import { formatDayIn, monthLabelIn, monthRangeIn, monthShortIn } from '#utils/calendar'
+import { monthKey, ordinal } from '#utils/dates'
 import { formatMoney } from '#utils/format'
 import { money } from '#utils/payments'
 import { tenantStatus } from '#utils/status'
@@ -51,9 +54,11 @@ function Tenant() {
   const house = useHouse(houseId)
   const openBilling = useUI((s) => s.openBilling)
   const openBackfill = useUI((s) => s.openBackfill)
+  const openAdvance = useUI((s) => s.openAdvance)
   const openPayment = useUI((s) => s.openPayment)
   const showInvoice = useUI((s) => s.showInvoice)
   const quickActions = usePreferences((s) => s.quickActions)
+  const system = useDateSystem()
 
   const [editing, setEditing] = useState(false)
   const [confirmDeleteTenant, setConfirmDeleteTenant] = useState(false)
@@ -76,7 +81,7 @@ function Tenant() {
 
   async function copyReminder() {
     if (!tenant) return
-    const text = reminderText(tenant, status)
+    const text = reminderText(tenant, status, system)
     try {
       if (navigator.share) await navigator.share({ text })
       else {
@@ -102,6 +107,12 @@ function Tenant() {
       label: 'Log past months',
       icon: History,
       run: () => openBackfill(tenant.id),
+    },
+    {
+      id: 'advance',
+      label: 'Pay in advance',
+      icon: PiggyBank,
+      run: () => openAdvance(tenant.id),
     },
     { id: 'edit', label: 'Edit details', icon: Pencil, run: () => setEditing(true) },
   ]
@@ -187,7 +198,7 @@ function Tenant() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="truncate font-medium">{monthLabel(m.month)}</span>
+                      <span className="truncate font-medium">{monthShortIn(m.month, system)}</span>
                       {m.partial && <Badge variant="warning">Part paid</Badge>}
                     </div>
                     {m.month === thisMonth && (
@@ -223,14 +234,14 @@ function Tenant() {
         {status.state === 'paid' && (
           <div className="flex items-center justify-center gap-2 rounded-card bg-success-soft py-2.5 text-[14px] font-semibold text-success">
             <Check className="size-4" />
-            Paid for {monthLabel(thisMonth)}
+            Paid for {monthShortIn(thisMonth, system)}
           </div>
         )}
 
         <Card className="divide-y divide-rule-soft text-[14px]">
           <Row label="Due date">
-            {status.dueDate.toLocaleDateString(undefined, { day: 'numeric', month: 'long' })} ·{' '}
-            {ordinal(tenant.dueDay)} each month
+            {formatDayIn(status.dueDate.toISOString(), system)} · {ordinal(tenant.dueDay)} each
+            month
           </Row>
           {tenant.phone && (
             <Row label="Phone">
@@ -241,7 +252,7 @@ function Tenant() {
           )}
           <Row label="Last settled">
             {tenant.lastPaidMonth
-              ? `${monthLabelLong(tenant.lastPaidMonth)} · logged ${formatDate(tenant.lastPaidDate)}`
+              ? `${monthLabelIn(tenant.lastPaidMonth, system)} · logged ${formatDayIn(tenant.lastPaidDate, system)}`
               : 'No month settled in full yet'}
           </Row>
           {tenant.notes && <Row label="Notes">{tenant.notes}</Row>}
@@ -266,7 +277,7 @@ function Tenant() {
                   onPay={() => openPayment({ tenantId: tenant.id, month: entry.month })}
                   onSettle={async () => {
                     await settleMonth(tenant.id, entry.month)
-                    toast.success(`${monthLabel(entry.month)} settled`)
+                    toast.success(`${monthShortIn(entry.month, system)} settled`)
                   }}
                   onInvoice={
                     entry.breakdown && house
@@ -311,7 +322,7 @@ function Tenant() {
 
       <ConfirmDialog
         open={Boolean(entryToDelete)}
-        title={`Remove ${entryToDelete ? monthLabel(entryToDelete.month) : ''} record?`}
+        title={`Remove ${entryToDelete ? monthShortIn(entryToDelete.month, system) : ''} record?`}
         body="The month goes back to unpaid, including every instalment logged against it. Status recalculates from what remains."
         confirmLabel="Remove record"
         onCancel={() => setEntryToDelete(null)}
@@ -350,6 +361,7 @@ function HistoryRow({
 }) {
   const [expanded, setExpanded] = useState(false)
   const strikeSettled = usePreferences((s) => s.strikeSettled)
+  const system = useDateSystem()
   const lines = entry.breakdown ? billLines(entry.breakdown) : []
   const settled = entry.paymentStatus === 'paid'
   const partial = entry.paymentStatus === 'partially_paid'
@@ -371,18 +383,19 @@ function HistoryRow({
                 settled && strikeSettled && 'text-muted-foreground line-through',
               )}
             >
-              {monthLabel(entry.month)}
+              {monthShortIn(entry.month, system)}
             </span>
             {partial && <Badge variant="warning">Part paid</Badge>}
             {entry.paymentStatus === 'unpaid' && <Badge variant="outline">Unpaid</Badge>}
             {entry.manual && <Tag>Manual</Tag>}
             {entry.viaBill && <Tag>On bill</Tag>}
+            {entry.advance && <Tag>Advance</Tag>}
             {entry.breakdown && <Tag>Itemised</Tag>}
           </div>
           <div className="mt-0.5 text-[12.5px] text-muted-foreground">
             {partial
               ? `${formatMoney(entry.amountPaid)} of ${formatMoney(entry.totalAmount)} · ${formatMoney(entry.amountDue)} left`
-              : `logged ${formatDate(entry.date)}`}
+              : `logged ${formatDayIn(entry.date, system)}`}
           </div>
         </button>
         <span className="shrink-0 font-display text-[16px] font-semibold">
@@ -392,7 +405,7 @@ function HistoryRow({
           variant="quiet"
           size="icon-sm"
           onClick={onDelete}
-          aria-label={`Remove ${monthLabel(entry.month)} record`}
+          aria-label={`Remove ${monthShortIn(entry.month, system)} record`}
         >
           <Trash2 className="size-4" />
         </Button>
@@ -429,7 +442,7 @@ function HistoryRow({
                 {entry.payments.map((payment) => (
                   <li key={payment.id} className="flex justify-between gap-3">
                     <span className="min-w-0 truncate text-muted-foreground">
-                      {formatDate(payment.date)} · {PAYMENT_METHOD_LABEL[payment.method]}
+                      {formatDayIn(payment.date, system)} · {PAYMENT_METHOD_LABEL[payment.method]}
                       {payment.reference ? ` · ${payment.reference}` : ''}
                     </span>
                     <span className="shrink-0 font-medium">{formatMoney(payment.amount)}</span>
@@ -470,10 +483,13 @@ function Tag({ children }: { children: React.ReactNode }) {
   )
 }
 
-function reminderText(tenant: TenantRecord, status: TenantStatus): string {
+function reminderText(tenant: TenantRecord, status: TenantStatus, system: DateSystem): string {
   const unit = tenant.unit ? ` (unit ${tenant.unit})` : ''
   if (status.outstanding.length > 1) {
-    const months = status.outstanding.map((m) => monthLabel(m.month)).join(', ')
+    const months = monthRangeIn(
+      status.outstanding.map((m) => m.month),
+      system,
+    )
     return `Namaste ${tenant.name}${unit}, rent for ${months} is still outstanding — ${formatMoney(
       status.arrearsAmount,
     )} in total. Please clear it at your earliest. Thank you.`
@@ -481,11 +497,11 @@ function reminderText(tenant: TenantRecord, status: TenantStatus): string {
   if (status.state === 'partial') {
     return `Namaste ${tenant.name}${unit}, thank you for the part payment. ${formatMoney(
       status.arrearsAmount,
-    )} is still outstanding for ${monthLabelLong(status.outstanding[0]?.month ?? monthKey())}. Thank you.`
+    )} is still outstanding for ${monthLabelIn(status.outstanding[0]?.month ?? monthKey(), system)}. Thank you.`
   }
   return `Namaste ${tenant.name}${unit}, this is a reminder that rent of ${formatMoney(
     tenant.rent,
-  )} for ${monthLabelLong(monthKey())} is ${status.label.toLowerCase()}. Thank you.`
+  )} for ${monthLabelIn(monthKey(), system)} is ${status.label.toLowerCase()}. Thank you.`
 }
 
 export default Tenant

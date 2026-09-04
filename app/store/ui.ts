@@ -20,11 +20,13 @@ interface UIState {
   /** Overlays that stack on top of whichever route is showing. */
   billingTenantId: string | null
   backfillTenantId: string | null
+  advanceTenantId: string | null
   payment: PaymentTarget | null
   invoice: InvoiceDoc | null
 
   openBilling: (id: string | null) => void
   openBackfill: (id: string | null) => void
+  openAdvance: (id: string | null) => void
   openPayment: (target: PaymentTarget | null) => void
   showInvoice: (doc: InvoiceDoc | null) => void
   closeAll: () => void
@@ -37,13 +39,21 @@ interface UIState {
 export const useUI = create<UIState>()((set) => ({
   billingTenantId: null,
   backfillTenantId: null,
+  advanceTenantId: null,
   payment: null,
   invoice: null,
 
   openBilling: (id) => set({ billingTenantId: id }),
   openBackfill: (id) => set({ backfillTenantId: id }),
+  openAdvance: (id) => set({ advanceTenantId: id }),
   openPayment: (target) => set({ payment: target }),
   showInvoice: (doc) => set({ invoice: doc }),
   closeAll: () =>
-    set({ billingTenantId: null, backfillTenantId: null, payment: null, invoice: null }),
+    set({
+      billingTenantId: null,
+      backfillTenantId: null,
+      advanceTenantId: null,
+      payment: null,
+      invoice: null,
+    }),
 }))

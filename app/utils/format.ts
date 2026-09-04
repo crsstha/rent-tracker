@@ -17,3 +17,18 @@ export function formatBytes(n: number): string {
 export function plural(count: number, singular: string, plural = `${singular}s`): string {
   return count === 1 ? singular : plural
 }
+
+/**
+ * "12k", "1.2L" — for axis ticks and other spots too tight for full figures.
+ * Lakhs, not millions: this is a Nepali ledger.
+ */
+export function formatCompact(amount: number): string {
+  const n = Math.round(amount)
+  if (Math.abs(n) < 1000) return String(n)
+  if (Math.abs(n) < 100_000) {
+    const k = n / 1000
+    return `${Math.abs(k) < 10 ? k.toFixed(1).replace(/\.0$/, '') : Math.round(k)}k`
+  }
+  const lakh = n / 100_000
+  return `${Math.abs(lakh) < 10 ? lakh.toFixed(1).replace(/\.0$/, '') : Math.round(lakh)}L`
+}

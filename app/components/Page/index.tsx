@@ -39,7 +39,7 @@ export function Page({
           )}
           <div className="flex items-center justify-between gap-3">
             <div className="cover-eyebrow">
-              <Home size={13} /> Landlord’s Ledger
+              <Home size={13} /> Khata (खाता)
             </div>
             {actions}
           </div>
@@ -48,7 +48,14 @@ export function Page({
         </div>
       </header>
 
-      <main className={cn('relative z-10 mx-auto w-full max-w-2xl px-4 pt-5 pb-12', className)}>
+      {/* Bottom padding clears the tab bar, plus whatever the device reserves
+          below it, so the last row of a list is never trapped underneath. */}
+      <main
+        className={cn(
+          'relative z-10 mx-auto w-full max-w-2xl px-4 pt-5 pb-[calc(4.75rem+env(safe-area-inset-bottom))]',
+          className,
+        )}
+      >
         {children}
       </main>
     </>

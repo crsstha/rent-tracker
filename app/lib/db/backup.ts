@@ -1,18 +1,25 @@
-import { houses, tenants, transaction } from './index'
-import { DATA_VERSION, upgradeTenant } from './migrations'
+import { dayKey } from '#utils/dates'
 
-import type { BackupFile, House, Tenant } from '#types'
+import { expenses, houses, tenants, transaction } from './index'
+import { DATA_VERSION, normaliseExpense, upgradeTenant } from './migrations'
+
+import type { BackupFile, Expense, House, Tenant } from '#types'
 
 export const BACKUP_VERSION = DATA_VERSION
 
 export async function exportBackup(): Promise<BackupFile> {
-  const [houseRows, tenantRows] = await Promise.all([houses.list(), tenants.list()])
+  const [houseRows, tenantRows, expenseRows] = await Promise.all([
+    houses.list(),
+    tenants.list(),
+    expenses.list(),
+  ])
   return {
     app: 'rent-register',
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
     houses: houseRows,
     tenants: tenantRows,
+    expenses: expenseRows,
   }
 }
 
@@ -28,9 +35,10 @@ export function parseBackup(raw: string): BackupFile {
   }
   if (!data || typeof data !== 'object') throw new BackupParseError('Backup file is empty.')
 
+  const today = dayKey()
   const file = data as Partial<BackupFile>
   if (file.app !== 'rent-register') {
-    throw new BackupParseError('This file was not exported from Rent Register.')
+    throw new BackupParseError('This file was not exported from Khata.')
   }
   if (!Array.isArray(file.houses) || !Array.isArray(file.tenants)) {
     throw new BackupParseError('Backup is missing its houses or tenants list.')
@@ -54,6 +62,14 @@ export function parseBackup(raw: string): BackupFile {
       throw new BackupParseError('A tenant entry in the backup is malformed.')
     }
   }
+  // A file from before the spending book has no `expenses` key at all, which
+  // is not a fault — it restores as an empty book.
+  const expenseRows: Expense[] = Array.isArray(file.expenses) ? file.expenses : []
+  for (const e of expenseRows) {
+    if (!e || typeof e.id !== 'string') {
+      throw new BackupParseError('An expense entry in the backup is malformed.')
+    }
+  }
 
   return {
     app: 'rent-register',
@@ -63,6 +79,7 @@ export function parseBackup(raw: string): BackupFile {
     // A v1 file predates partial payments — upgrade it on the way in so a
     // restore lands in the same shape a live migration produces.
     tenants: file.tenants.map(upgradeTenant),
+    expenses: expenseRows.map((e) => normaliseExpense(e, today)),
   }
 }
 
@@ -84,22 +101,32 @@ export type ImportMode = 'replace' | 'merge'
 export async function importBackup(file: BackupFile, mode: ImportMode): Promise<void> {
   await transaction(async () => {
     if (mode === 'replace') {
-      await Promise.all([houses.clear(), tenants.clear()])
-      await Promise.all([houses.putMany(file.houses), tenants.putMany(file.tenants)])
+      await Promise.all([houses.clear(), tenants.clear(), expenses.clear()])
+      await Promise.all([
+        houses.putMany(file.houses),
+        tenants.putMany(file.tenants),
+        expenses.putMany(file.expenses),
+      ])
       return
     }
-    const [existingHouses, existingTenants] = await Promise.all([houses.list(), tenants.list()])
+    const [existingHouses, existingTenants, existingExpenses] = await Promise.all([
+      houses.list(),
+      tenants.list(),
+      expenses.list(),
+    ])
     const houseIds = new Set(existingHouses.map((h: House) => h.id))
     const tenantIds = new Set(existingTenants.map((t: Tenant) => t.id))
+    const expenseIds = new Set(existingExpenses.map((e: Expense) => e.id))
     await Promise.all([
       houses.putMany(file.houses.filter((h) => !houseIds.has(h.id))),
       tenants.putMany(file.tenants.filter((t) => !tenantIds.has(t.id))),
+      expenses.putMany(file.expenses.filter((e) => !expenseIds.has(e.id))),
     ])
   })
 }
 
 export async function wipeAll(): Promise<void> {
   await transaction(async () => {
-    await Promise.all([houses.clear(), tenants.clear()])
+    await Promise.all([houses.clear(), tenants.clear(), expenses.clear()])
   })
 }

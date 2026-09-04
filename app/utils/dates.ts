@@ -3,6 +3,39 @@ export function monthKey(d: Date = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+/** "YYYY-MM-DD" for a given date (local time — a day ends at local midnight). */
+export function dayKey(d: Date = new Date()): string {
+  return `${monthKey(d)}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * A "YYYY-MM-DD" key back to a local Date. Never `new Date(key)` — the
+ * standard reads a bare date string as UTC, which lands on the day before
+ * everywhere west of Greenwich.
+ */
+export function parseDayKey(key: string): Date {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+/** Shift a "YYYY-MM-DD" key by n days (negative goes back). */
+export function addDays(key: string, n: number): string {
+  const d = parseDayKey(key)
+  d.setDate(d.getDate() + n)
+  return dayKey(d)
+}
+
+/** The billing-month key a day falls in. */
+export function monthOfDay(key: string): string {
+  return key.slice(0, 7)
+}
+
+/** How many days a "YYYY-MM" key holds. */
+export function daysInMonth(key: string): number {
+  const [y, m] = key.split('-').map(Number)
+  return new Date(y, m, 0).getDate()
+}
+
 /** Shift a "YYYY-MM" key by n months (negative goes back). */
 export function addMonths(key: string, n: number): string {
   const [y, m] = key.split('-').map(Number)
@@ -46,6 +79,14 @@ export function recentMonths(count: number, from: Date = new Date()): string[] {
   return out
 }
 
+/** Walk forward `count` months from `from` (inclusive), oldest first. */
+export function upcomingMonths(count: number, from: Date = new Date()): string[] {
+  const start = monthKey(from)
+  const out: string[] = []
+  for (let i = 0; i < count; i++) out.push(addMonths(start, i))
+  return out
+}
+
 /** Midnight on the given day — status compares whole days, not timestamps. */
 export function startOfDay(from: Date): Date {
   const d = new Date(from)
@@ -78,4 +119,26 @@ export function ordinal(n: number): string {
   if (rem100 >= 11 && rem100 <= 13) return `${n}th`
   const suffix = ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'
   return `${n}${suffix}`
+}
+
+/** The last day of a "YYYY-MM" key, at the end of the day. */
+export function endOfMonth(key: string): Date {
+  const [y, m] = key.split('-').map(Number)
+  const d = new Date(y, m, 0)
+  d.setHours(23, 59, 59, 999)
+  return d
+}
+
+/**
+ * "Today", "Tomorrow", "in 12 days", "3 days ago".
+ *
+ * Whole days apart, counted from midnight to midnight — a festival at dawn
+ * tomorrow is "Tomorrow", not "in 14 hours".
+ */
+export function relativeDayLabel(days: number): string {
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Tomorrow'
+  if (days === -1) return 'Yesterday'
+  if (days > 0) return `in ${days} days`
+  return `${Math.abs(days)} days ago`
 }

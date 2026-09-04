@@ -40,6 +40,7 @@ export const backend: DataBackend = createBackend()
 /** Repositories. Features talk to these — never to Dexie or Firestore. */
 export const houses = backend.houses
 export const tenants = backend.tenants
+export const expenses = backend.expenses
 
 /** Run several writes atomically. */
 export const transaction = backend.transaction
@@ -47,6 +48,7 @@ export const transaction = backend.transaction
 export {
   DATA_VERSION,
   lastSettled,
+  normaliseExpense,
   sortHistory,
   upgradeHistoryEntry,
   upgradeTenant,

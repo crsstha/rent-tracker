@@ -4,8 +4,10 @@ import { Download, X } from 'lucide-react'
 
 import { useUI } from '#store/ui'
 import { billLines, billNumber } from '#utils/billing'
+import { bsMonthSpanLabel } from '#utils/calendar'
 import { formatDate, monthLabelLong } from '#utils/dates'
 import { formatMoney } from '#utils/format'
+import { formatBS, toBS } from '#utils/nepali'
 import { money } from '#utils/payments'
 
 /**
@@ -102,8 +104,19 @@ export function Invoice() {
             {tenant.phone && <div className="text-[#5d5245]">{tenant.phone}</div>}
           </div>
           <div className="text-right">
-            <Meta label="Billing period" value={monthLabelLong(month)} />
-            <Meta label="Issued" value={formatDate(issued)} />
+            {/* Both calendars, always: an invoice is handed over, and the
+                tenant's reading of the date shouldn't depend on a setting
+                inside the landlord's app. */}
+            <Meta
+              label="Billing period"
+              value={monthLabelLong(month)}
+              note={`${bsMonthSpanLabel(month)} BS`}
+            />
+            <Meta
+              label="Issued"
+              value={formatDate(issued)}
+              note={`${formatBS(toBS(new Date(issued)))} BS`}
+            />
             <Meta label="Rent due day" value={`Day ${tenant.dueDay} of the month`} />
           </div>
         </section>
@@ -189,13 +202,14 @@ export function Invoice() {
   )
 }
 
-function Meta({ label, value }: { label: string; value: string }) {
+function Meta({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div className="mb-1.5">
       <span className="text-[10.5px] font-semibold tracking-[0.14em] text-[#8b7f6e] uppercase">
         {label}{' '}
       </span>
       <div className="font-medium">{value}</div>
+      {note && <div className="text-[11.5px] text-[#8b7f6e]">{note}</div>}
     </div>
   )
 }

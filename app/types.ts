@@ -49,6 +49,80 @@ export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   other: 'Other',
 }
 
+/**
+ * Personal day-to-day spending — the other side of the book from rent.
+ *
+ * Deliberately its own store rather than a negative payment: this money has no
+ * tenant, no house and no billing month behind it, and mixing it into the rent
+ * ledger would corrupt every collected/pending figure the register computes.
+ */
+export type ExpenseCategory =
+  | 'food'
+  | 'dining'
+  | 'transport'
+  | 'fuel'
+  | 'utilities'
+  | 'phone'
+  | 'health'
+  | 'education'
+  | 'shopping'
+  | 'household'
+  | 'social'
+  | 'leisure'
+  | 'other'
+
+/** Display order — roughly how often a day's spending lands in each. */
+export const EXPENSE_CATEGORIES: readonly ExpenseCategory[] = [
+  'food',
+  'dining',
+  'transport',
+  'fuel',
+  'utilities',
+  'phone',
+  'household',
+  'health',
+  'education',
+  'shopping',
+  'social',
+  'leisure',
+  'other',
+]
+
+export const EXPENSE_CATEGORY_LABEL: Record<ExpenseCategory, string> = {
+  food: 'Groceries',
+  dining: 'Eating out',
+  transport: 'Transport',
+  fuel: 'Fuel',
+  utilities: 'Utilities',
+  phone: 'Phone & internet',
+  household: 'Household',
+  health: 'Health',
+  education: 'Education',
+  shopping: 'Shopping',
+  social: 'Gifts & social',
+  leisure: 'Leisure',
+  other: 'Other',
+}
+
+/**
+ * One thing bought on one day.
+ *
+ * `day` is a plain "YYYY-MM-DD" local key, not a timestamp: spending is
+ * counted by the day it happened, and a chiya at 11pm belongs to that day
+ * rather than to whatever UTC made of it. `createdAt` keeps the order entries
+ * were logged in within a day.
+ */
+export interface Expense {
+  id: string
+  /** "YYYY-MM-DD" — the day the money was spent, local time. */
+  day: string
+  amount: number
+  category: ExpenseCategory
+  note?: string
+  method: PaymentMethod
+  createdAt: string
+}
+
 /** One instalment against a month's charge. A month may hold several. */
 export interface Payment {
   id: string
@@ -86,6 +160,8 @@ export interface HistoryEntry {
   manual?: boolean
   /** An arrears month settled as part of a generated bill. */
   viaBill?: boolean
+  /** Settled ahead of its due date, as part of a multi-month advance payment. */
+  advance?: boolean
   breakdown?: BillBreakdown
 }
 
@@ -143,4 +219,6 @@ export interface BackupFile {
   exportedAt: string
   houses: House[]
   tenants: Tenant[]
+  /** Absent from files exported before the spending book existed. */
+  expenses: Expense[]
 }

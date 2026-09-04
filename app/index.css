@@ -51,6 +51,10 @@
 
   --font-display: 'Roboto Slab', ui-serif, Georgia, serif;
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Inter has no Devanagari, so ०–९ fall back to whatever the device has —
+     often a face with a different weight and x-height, which is what makes the
+     calendar's dates look muddy. Name the script's font explicitly instead. */
+  --font-devanagari: 'Noto Sans Devanagari', 'Mukta', 'Kalimati', 'Mangal', sans-serif;
 
   --radius-card: var(--radius-lg);
 }

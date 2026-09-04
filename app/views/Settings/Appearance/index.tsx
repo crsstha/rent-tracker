@@ -19,6 +19,12 @@ import {
   type QuickActionId,
   usePreferences,
 } from '#store/preferences'
+import type { DateSystem } from '#utils/calendar'
+
+const DATE_SYSTEMS: { value: DateSystem; label: string; hint: string }[] = [
+  { value: 'BS', label: 'Bikram Sambat', hint: 'Baisakh–Chaitra, e.g. 19 Bhadra 2083' },
+  { value: 'AD', label: 'Gregorian', hint: 'January–December, e.g. 4 Sep 2026' },
+]
 
 const MODES: { value: ThemeMode; label: string; hint: string; icon: typeof Sun }[] = [
   { value: 'auto', label: 'Auto', hint: 'Follow the device setting', icon: Monitor },
@@ -62,7 +68,7 @@ function Appearance() {
   return (
     <Page
       title="Appearance"
-      subtitle="Theme, palette and entry preferences"
+      subtitle="Theme, palette, calendar and entry preferences"
       backTo={routePath('settings')}
       backLabel="Settings"
     >
@@ -123,6 +129,41 @@ function Appearance() {
         inUse={resolved === 'dark'}
         onSelect={(id) => setPalette('dark', id)}
       />
+
+      {/* Dates, not colours — but it is the same "how the register reads to
+          me" decision, and this is the screen that already holds those. */}
+      <section className="mb-6">
+        <h2 className="mb-2 text-[11px] font-semibold tracking-[0.1em] text-muted-foreground uppercase">
+          Calendar
+        </h2>
+        <RadioGroup
+          value={prefs.dateSystem}
+          onValueChange={(v) => prefs.set('dateSystem', v as DateSystem)}
+          className="grid-cols-2 gap-2"
+        >
+          {DATE_SYSTEMS.map((option) => (
+            <label
+              key={option.value}
+              className={cn(
+                'flex cursor-pointer flex-col gap-0.5 rounded-card border px-3 py-2.5 transition',
+                prefs.dateSystem === option.value
+                  ? 'border-primary bg-primary-soft'
+                  : 'border-border bg-card hover:bg-accent',
+              )}
+            >
+              <RadioGroupItem value={option.value} className="sr-only" />
+              <span className="text-[14px] font-semibold">{option.label}</span>
+              <span className="text-[11.5px] leading-tight text-muted-foreground">
+                {option.hint}
+              </span>
+            </label>
+          ))}
+        </RadioGroup>
+        <p className="mt-2 text-[12.5px] text-muted-foreground">
+          Billing months stay Gregorian underneath — this only changes how dates are written.
+          Invoices always carry both.
+        </p>
+      </section>
 
       <section className="mb-6">
         <h2 className="mb-2 text-[11px] font-semibold tracking-[0.1em] text-muted-foreground uppercase">

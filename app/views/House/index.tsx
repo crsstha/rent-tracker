@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
 import { Bell, Home, Pencil, Plus, Trash2 } from 'lucide-react'
 
+import { CollectionChart } from '#components/CollectionChart'
 import { ConfirmDialog } from '#components/ConfirmDialog'
 import { EmptyState } from '#components/EmptyState'
 import { HouseForm } from '#components/HouseForm'
@@ -12,16 +13,149 @@ import { Button } from '#components/ui/button'
 import { Card } from '#components/ui/card'
 import { Skeleton } from '#components/ui/skeleton'
 import { toast } from '#components/ui/sonner'
-import type { RankedTenant } from '#hooks/useData'
-import { needsAttention, summarise, useHouse, useRanked, useTenants } from '#hooks/useData'
+import type { MonthPoint, RankedTenant } from '#hooks/useData'
+import {
+  monthlyCollection,
+  needsAttention,
+  summarise,
+  totalsFor,
+  useHouse,
+  useRanked,
+  useTenants,
+} from '#hooks/useData'
 import { deleteHouse } from '#lib/actions'
+import { cn } from '#lib/utils'
 import useRouting, { routePath } from '#root/hooks/useRouting'
-import { ordinal } from '#utils/dates'
+import { useDateSystem } from '#store/preferences'
+import { monthLabelIn } from '#utils/calendar'
+import { addMonths, endOfMonth, monthKey, ordinal } from '#utils/dates'
 import { formatMoney } from '#utils/format'
+
+import type { Tenant } from '#types'
+
+/** How far the collection chart looks back, in months. */
+const MONTHS_CHARTED = 12
+
+type Period = 'this-month' | 'last-month' | 'year'
+
+const PERIODS: { value: Period; label: string }[] = [
+  { value: 'this-month', label: 'This month' },
+  { value: 'last-month', label: 'Last month' },
+  { value: 'year', label: 'Last 12 months' },
+]
+
+interface StatCell {
+  label: string
+  sub: string
+  value: string
+  tone: string
+}
+
+/**
+ * The three headline figures for whichever period is showing, and the months
+ * the chart should draw at full strength.
+ *
+ * A past month is summarised as of its own last day rather than today, so
+ * "last month" reads as it did when the month closed — arrears counted from
+ * there, not from now.
+ */
+function usePeriodStats(
+  tenants: Tenant[],
+  series: MonthPoint[],
+  period: Period,
+): { cells: StatCell[]; emphasis: string[] } {
+  const system = useDateSystem()
+
+  return useMemo(() => {
+    if (period === 'year') {
+      const totals = totalsFor(series)
+      return {
+        cells: [
+          {
+            label: 'Collected',
+            sub: `${totals.months} months`,
+            value: formatMoney(totals.collected),
+            tone: 'text-success',
+          },
+          {
+            label: 'Billed',
+            sub: 'rent + utilities',
+            value: formatMoney(totals.billed),
+            tone: 'text-foreground',
+          },
+          {
+            label: 'Still due',
+            sub: totals.due > 0 ? 'across the year' : 'all settled',
+            value: formatMoney(totals.due),
+            tone: totals.due > 0 ? 'text-destructive' : 'text-muted-foreground',
+          },
+        ],
+        emphasis: series.map((point) => point.month),
+      }
+    }
+
+    const month = period === 'this-month' ? monthKey() : addMonths(monthKey(), -1)
+    const asOf = period === 'this-month' ? new Date() : endOfMonth(month)
+    const summary = summarise(tenants, asOf)
+    const when = monthLabelIn(month, system)
+
+    return {
+      cells: [
+        {
+          label: 'Collected',
+          sub: when,
+          value: formatMoney(summary.collected),
+          tone: 'text-success',
+        },
+        {
+          label: 'Pending',
+          sub: when,
+          value: formatMoney(summary.pending),
+          tone: 'text-foreground',
+        },
+        {
+          label: 'Arrears',
+          sub: summary.arrears > 0 ? 'earlier months' : 'nothing older',
+          value: formatMoney(summary.arrears),
+          tone: summary.arrears > 0 ? 'text-destructive' : 'text-muted-foreground',
+        },
+      ],
+      emphasis: [month],
+    }
+  }, [tenants, series, period, system])
+}
+
+function PeriodTabs({ value, onChange }: { value: Period; onChange: (next: Period) => void }) {
+  return (
+    <div
+      role="group"
+      aria-label="Period"
+      className="mb-3 flex rounded-lg border border-border bg-muted p-0.5"
+    >
+      {PERIODS.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={value === option.value}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            'flex-1 rounded-[6px] px-2 py-1.5 text-[12.5px] font-medium transition',
+            value === option.value
+              ? 'bg-card text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function House() {
   const { houseId = '' } = useParams()
   const routeTo = useRouting()
+  const system = useDateSystem()
   const house = useHouse(houseId)
   const tenants = useTenants(houseId)
   const ranked = useRanked(tenants)
@@ -29,9 +163,11 @@ function House() {
   const [addingTenant, setAddingTenant] = useState(false)
   const [editingHouse, setEditingHouse] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [period, setPeriod] = useState<Period>('this-month')
 
-  const summary = useMemo(() => summarise(tenants ?? []), [tenants])
   const attention = useMemo(() => needsAttention(ranked), [ranked])
+  const series = useMemo(() => monthlyCollection(tenants ?? [], MONTHS_CHARTED), [tenants])
+  const { cells, emphasis } = usePeriodStats(tenants ?? [], series, period)
 
   // The house was deleted from under us (or the id is stale) — go home.
   // `replace`, so Back doesn't bounce straight into the missing record again.
@@ -62,25 +198,17 @@ function House() {
         </Button>
       </div>
 
-      <Card className="mb-4 grid grid-cols-3 divide-x divide-rule-soft">
-        <Cell
-          label="Collected"
-          sub="this month"
-          value={formatMoney(summary.collected)}
-          tone="text-success"
-        />
-        <Cell
-          label="Pending"
-          sub="this month"
-          value={formatMoney(summary.pending)}
-          tone="text-foreground"
-        />
-        <Cell
-          label="Arrears"
-          sub={summary.arrears > 0 ? 'earlier months' : 'nothing older'}
-          value={formatMoney(summary.arrears)}
-          tone={summary.arrears > 0 ? 'text-destructive' : 'text-muted-foreground'}
-        />
+      <PeriodTabs value={period} onChange={setPeriod} />
+
+      <Card className="mb-4 overflow-hidden">
+        <div className="grid grid-cols-3 divide-x divide-rule-soft">
+          {cells.map((cell) => (
+            <Cell key={cell.label} {...cell} />
+          ))}
+        </div>
+        <div className="border-t border-rule-soft px-3.5 pt-3.5 pb-3">
+          <CollectionChart points={series} system={system} emphasis={emphasis} />
+        </div>
       </Card>
 
       {attention.length > 0 && (
@@ -163,17 +291,7 @@ function House() {
   )
 }
 
-function Cell({
-  label,
-  sub,
-  value,
-  tone,
-}: {
-  label: string
-  sub: string
-  value: string
-  tone: string
-}) {
+function Cell({ label, sub, value, tone }: StatCell) {
   return (
     <div className="px-3 py-3 text-center">
       <div className="text-[10.5px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">

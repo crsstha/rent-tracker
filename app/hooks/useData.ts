@@ -1,13 +1,13 @@
 import { useMemo } from 'react'
 
-import { houses as houseRepo, tenants as tenantRepo } from '#lib/db'
-import { monthKey } from '#utils/dates'
+import { expenses as expenseRepo, houses as houseRepo, tenants as tenantRepo } from '#lib/db'
+import { monthKey, recentMonths } from '#utils/dates'
 import { money } from '#utils/payments'
-import { entryFor, outstandingMonths, tenantStatus, urgencyRank } from '#utils/status'
+import { entryFor, outstandingMonths, tenancyStart, tenantStatus, urgencyRank } from '#utils/status'
 
 import { useCollection, useRecord } from './useSubscription'
 
-import type { House, Tenant, TenantStatus } from '#types'
+import type { Expense, House, Tenant, TenantStatus } from '#types'
 
 export function useHouses(): House[] | undefined {
   return useCollection(houseRepo, { orderBy: 'createdAt' })
@@ -27,6 +27,18 @@ export function useTenants(houseId: string | null | undefined): Tenant[] | undef
 
 export function useTenant(id: string | null | undefined): Tenant | undefined | null {
   return useRecord(tenantRepo, id)
+}
+
+/**
+ * Every logged expense, oldest day first.
+ *
+ * One subscription over the whole book rather than a query per month: the
+ * spending view slices by month, day and category as the user moves around,
+ * and re-subscribing on each of those would cost more than filtering a few
+ * thousand rows in memory ever does.
+ */
+export function useExpenses(): Expense[] | undefined {
+  return useCollection(expenseRepo, { orderBy: 'day' })
 }
 
 export interface Summary {
@@ -121,4 +133,66 @@ export function needsAttention(ranked: RankedTenant[]): RankedTenant[] {
       r.status.state === 'partial' ||
       r.status.state === 'due-soon',
   )
+}
+
+/** One billing month across a set of tenants — what was charged and what came in. */
+export interface MonthPoint {
+  month: string
+  /** Charged that month: the bill if one was raised, otherwise the agreed rent. */
+  billed: number
+  collected: number
+  /** `billed - collected`, floored at zero. */
+  due: number
+  /** How many tenancies were running that month. */
+  tenantCount: number
+}
+
+/**
+ * The trailing `count` months, oldest first — the series behind the collection
+ * chart.
+ *
+ * A month a tenancy had not started in contributes nothing, so a tenant added
+ * last week doesn't invent a year of missed rent behind them. A month with no
+ * entry is charged the agreed rent: nothing was billed, but it was still owed.
+ */
+export function monthlyCollection(
+  tenants: Tenant[],
+  count = 12,
+  from: Date = new Date(),
+): MonthPoint[] {
+  const months = recentMonths(count, from).reverse()
+  const starts = new Map(tenants.map((t) => [t.id, tenancyStart(t)]))
+
+  return months.map((month) => {
+    const point: MonthPoint = { month, billed: 0, collected: 0, due: 0, tenantCount: 0 }
+
+    for (const tenant of tenants) {
+      if (month < (starts.get(tenant.id) ?? month)) continue
+      point.tenantCount++
+
+      const entry = entryFor(tenant, month)
+      point.billed += money(entry ? entry.totalAmount : tenant.rent)
+      point.collected += money(entry?.amountPaid ?? 0)
+    }
+
+    point.due = Math.max(0, point.billed - point.collected)
+    return point
+  })
+}
+
+export interface RangeTotals {
+  billed: number
+  collected: number
+  due: number
+  months: number
+}
+
+export function totalsFor(points: MonthPoint[]): RangeTotals {
+  const totals = { billed: 0, collected: 0, due: 0, months: points.length }
+  for (const point of points) {
+    totals.billed += point.billed
+    totals.collected += point.collected
+  }
+  totals.due = Math.max(0, totals.billed - totals.collected)
+  return totals
 }

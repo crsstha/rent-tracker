@@ -18,9 +18,9 @@ import { toast } from '#components/ui/sonner'
 import { Textarea } from '#components/ui/textarea'
 import { useTenant } from '#hooks/useData'
 import { recordPayment, removePayment } from '#lib/actions'
-import { detectMethod, usePreferences } from '#store/preferences'
+import { detectMethod, useDateSystem, usePreferences } from '#store/preferences'
 import { useUI } from '#store/ui'
-import { formatDate, monthLabel } from '#utils/dates'
+import { formatDayIn, monthShortIn } from '#utils/calendar'
 import { formatMoney } from '#utils/format'
 import { money, OverpaymentError } from '#utils/payments'
 import { entryFor, outstandingMonths } from '#utils/status'
@@ -36,6 +36,7 @@ import type { HistoryEntry, PaymentMethod } from '#types'
  */
 export function PaymentSheet() {
   const target = useUI((s) => s.payment)
+  const system = useDateSystem()
   const close = () => useUI.getState().openPayment(null)
   const tenant = useTenant(target?.tenantId)
   const autoDetect = usePreferences((s) => s.autoDetectMethod)
@@ -123,7 +124,7 @@ export function PaymentSheet() {
       close()
       toast.success(
         saved.paymentStatus === 'paid'
-          ? `${monthLabel(month)} settled in full`
+          ? `${monthShortIn(month, system)} settled in full`
           : `${formatMoney(money(amount))} recorded · ${formatMoney(saved.amountDue)} left`,
       )
     } catch (err) {
@@ -176,7 +177,7 @@ export function PaymentSheet() {
             <SelectContent>
               {months.map((m) => (
                 <SelectItem key={m} value={m}>
-                  {monthLabel(m)}
+                  {monthShortIn(m, system)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -186,7 +187,7 @@ export function PaymentSheet() {
         {/* Running balance — charged, collected, and what's left. */}
         <div className="rounded-card border border-border bg-card px-4 py-3">
           <div className="flex items-baseline justify-between text-[14px]">
-            <span className="text-muted-foreground">Charged for {monthLabel(month)}</span>
+            <span className="text-muted-foreground">Charged for {monthShortIn(month, system)}</span>
             <span className="font-medium">{formatMoney(charge)}</span>
           </div>
           <div className="mt-1 flex items-baseline justify-between text-[14px]">
@@ -314,6 +315,7 @@ export function PaymentSheet() {
 }
 
 function PaymentList({ entry, tenantId }: { entry: HistoryEntry; tenantId: string }) {
+  const system = useDateSystem()
   return (
     <section>
       <h3 className="mb-2 text-[11px] font-semibold tracking-[0.1em] text-muted-foreground uppercase">
@@ -337,7 +339,7 @@ function PaymentList({ entry, tenantId }: { entry: HistoryEntry; tenantId: strin
                 </span>
               </div>
               <div className="truncate text-[12px] text-muted-foreground">
-                {formatDate(payment.date)}
+                {formatDayIn(payment.date, system)}
                 {payment.reference ? ` · ${payment.reference}` : ''}
                 {payment.note ? ` · ${payment.note}` : ''}
               </div>

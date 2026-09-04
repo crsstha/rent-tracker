@@ -3,8 +3,9 @@
  *
  * Each entry is lazy — the module is only fetched when the route is first
  * visited, so a landlord opening the houses list doesn't pay for the settings
- * screen or the invoice renderer. `App.tsx` turns these into react-router
- * objects; `useRouting` turns the keys into type-checked navigation.
+ * screen, the spending book or the invoice renderer. `App.tsx` turns these
+ * into react-router objects; `useRouting` turns the keys into type-checked
+ * navigation.
  *
  * `visibility` is carried from the reference client so an auth split can be
  * added without reshaping the config. Everything is `is-anything` today: the
@@ -21,9 +22,15 @@ export interface RouteConfig {
   children?: RouteConfig[]
 }
 
-const houses: RouteConfig = {
+const home: RouteConfig = {
   index: true,
   path: '/',
+  load: () => import('#views/Home'),
+  visibility: 'is-anything',
+}
+
+const houses: RouteConfig = {
+  path: '/houses',
   load: () => import('#views/Houses'),
   visibility: 'is-anything',
 }
@@ -37,6 +44,18 @@ const house: RouteConfig = {
 const tenant: RouteConfig = {
   path: '/houses/:houseId/tenants/:tenantId',
   load: () => import('#views/Tenant'),
+  visibility: 'is-anything',
+}
+
+const spending: RouteConfig = {
+  path: '/spending',
+  load: () => import('#views/Spending'),
+  visibility: 'is-anything',
+}
+
+const spendingTrends: RouteConfig = {
+  path: '/spending/trends',
+  load: () => import('#views/Spending/Trends'),
   visibility: 'is-anything',
 }
 
@@ -59,9 +78,12 @@ const notFound: RouteConfig = {
 }
 
 const routes = {
+  home,
   houses,
   house,
   tenant,
+  spending,
+  spendingTrends,
   settings,
   appearance,
   notFound,

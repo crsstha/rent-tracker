@@ -8,6 +8,7 @@ import {
   deleteHouse,
   generateBill,
   markPaid,
+  payInAdvance,
   recordPayment,
   removePayment,
   settleArrears,
@@ -149,6 +150,50 @@ describe('backfilling past months', () => {
     expect(t.history[2].amountPaid).toBe(9000)
     expect(t.history[2].paymentStatus).toBe('paid')
     expect(t.lastPaidMonth).toBe(THIS_MONTH)
+  })
+})
+
+describe('paying in advance', () => {
+  it('settles the current month and future ones at the current rent', async () => {
+    const { tenantId, get } = await seed()
+    await payInAdvance(tenantId, [THIS_MONTH, addMonths(THIS_MONTH, 1), addMonths(THIS_MONTH, 2)], {
+      method: 'bank',
+      reference: 'ADV-1',
+    })
+
+    const t = await get()
+    expect(t.history).toHaveLength(3)
+    for (const month of [THIS_MONTH, addMonths(THIS_MONTH, 1), addMonths(THIS_MONTH, 2)]) {
+      const entry = entryFor(t, month)!
+      expect(entry.paymentStatus).toBe('paid')
+      expect(entry.amountPaid).toBe(12000)
+      expect(entry.advance).toBe(true)
+      expect(entry.payments[0].method).toBe('bank')
+      expect(entry.payments[0].reference).toBe('ADV-1')
+    }
+    // Future months settled ahead of time still become the latest settled month.
+    expect(t.lastPaidMonth).toBe(addMonths(THIS_MONTH, 2))
+    expect(unpaidMonths(t)).toEqual([])
+  })
+
+  it('tops up a month already part paid rather than double-charging it', async () => {
+    const { tenantId, get } = await seed()
+    await recordPayment(tenantId, THIS_MONTH, { amount: 5000 })
+    await payInAdvance(tenantId, [THIS_MONTH])
+
+    const entry = entryFor(await get(), THIS_MONTH)!
+    expect(entry.paymentStatus).toBe('paid')
+    expect(entry.amountPaid).toBe(12000)
+    expect(entry.payments).toHaveLength(2)
+  })
+
+  it('leaves an already-settled month untouched', async () => {
+    const { tenantId, get } = await seed()
+    await markPaid(tenantId)
+    await payInAdvance(tenantId, [THIS_MONTH])
+
+    const entry = entryFor(await get(), THIS_MONTH)!
+    expect(entry.payments).toHaveLength(1)
   })
 })
 

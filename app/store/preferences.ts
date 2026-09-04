@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+import type { DateSystem } from '#utils/calendar'
+
 /**
  * Entry preferences — how the register behaves while you work in it, as
  * opposed to how it looks. Both sets live on /settings/appearance.
@@ -11,6 +13,7 @@ export const QUICK_ACTIONS = [
   { id: 'bill', label: 'Generate bill' },
   { id: 'reminder', label: 'Send reminder' },
   { id: 'backfill', label: 'Log past months' },
+  { id: 'advance', label: 'Pay in advance' },
   { id: 'edit', label: 'Edit details' },
 ] as const
 
@@ -19,6 +22,8 @@ export type QuickActionId = (typeof QUICK_ACTIONS)[number]['id']
 export const DEFAULT_QUICK_ACTIONS: QuickActionId[] = ['payment', 'bill']
 
 export interface Preferences {
+  /** Which calendar dates and billing months are labelled in. */
+  dateSystem: DateSystem
   /** Notes fields stay one line until focused. */
   expandNotesOnFocus: boolean
   /** Status stamps drop to a dot plus a short label. */
@@ -32,6 +37,7 @@ export interface Preferences {
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
+  dateSystem: 'BS',
   expandNotesOnFocus: false,
   compactStatus: false,
   strikeSettled: true,
@@ -67,6 +73,11 @@ export const usePreferences = create<PreferencesState>()(
     },
   ),
 )
+
+/** The calendar every date and month label is rendered in. */
+export function useDateSystem(): DateSystem {
+  return usePreferences((s) => s.dateSystem)
+}
 
 /**
  * Guess a payment method from free text — "esewa 9841…", "cheque no 4412",

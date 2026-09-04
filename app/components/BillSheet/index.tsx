@@ -22,6 +22,7 @@ import { Tabs, TabsList, TabsTrigger } from '#components/ui/tabs'
 import { useHouse, useTenant } from '#hooks/useData'
 import { generateBill } from '#lib/actions'
 import { cn } from '#lib/utils'
+import { useDateSystem } from '#store/preferences'
 import { useUI } from '#store/ui'
 import {
   type BillInput,
@@ -30,7 +31,8 @@ import {
   computeBill,
   DEFAULT_ELEC_RATE,
 } from '#utils/billing'
-import { monthKey, monthLabel, monthRangeLabel, recentMonths } from '#utils/dates'
+import { monthRangeIn, monthShortIn } from '#utils/calendar'
+import { monthKey, recentMonths } from '#utils/dates'
 import { formatMoney } from '#utils/format'
 import { money } from '#utils/payments'
 
@@ -38,6 +40,7 @@ import type { PaymentMethod } from '#types'
 
 export function BillSheet() {
   const tenantId = useUI((s) => s.billingTenantId)
+  const system = useDateSystem()
   const close = () => useUI.getState().openBilling(null)
   const tenant = useTenant(tenantId)
   const house = useHouse(tenant?.houseId)
@@ -104,7 +107,7 @@ export function BillSheet() {
       close()
       showInvoice({
         tenant: result.tenant,
-        houseName: house?.name ?? 'Rent Register',
+        houseName: house?.name ?? 'Khata',
         houseAddress: house?.address,
         month: result.month,
         breakdown: result.breakdown,
@@ -153,7 +156,7 @@ export function BillSheet() {
                 ? 'Generating…'
                 : outstandingAfter > 0
                   ? `Raise bill & take ${formatMoney(takeNow)}`
-                  : `Generate & mark ${monthLabel(month)} paid`}
+                  : `Generate & mark ${monthShortIn(month, system)} paid`}
             </Button>
           </div>
         </div>
@@ -168,7 +171,7 @@ export function BillSheet() {
             <SelectContent>
               {recentMonths(12).map((m) => (
                 <SelectItem key={m} value={m}>
-                  {monthLabel(m)}
+                  {monthShortIn(m, system)}
                   {m === monthKey() ? ' (this month)' : ''}
                 </SelectItem>
               ))}
@@ -212,7 +215,10 @@ export function BillSheet() {
                   Add {arrears.length} unpaid month{arrears.length === 1 ? '' : 's'}
                 </div>
                 <div className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
-                  {monthRangeLabel(arrears.map((m) => m.month))}
+                  {monthRangeIn(
+                    arrears.map((m) => m.month),
+                    system,
+                  )}
                   {arrears.some((m) => m.partial) ? ' · part paid already' : ''}
                 </div>
               </div>

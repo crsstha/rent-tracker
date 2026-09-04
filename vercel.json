@@ -4,7 +4,7 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/((?!assets/|icons/|sw.js|workbox-.*|manifest.webmanifest|favicon.svg).*)",
+      "source": "/((?!assets/|icons/|sw.js|workbox-.*|manifest.webmanifest|favicon.*\\.png).*)",
       "destination": "/index.html"
     }
   ],

@@ -35,7 +35,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['favicon.svg', 'icons/apple-touch-icon.png'],
+      includeAssets: ['favicon.png', 'favicon-32.png', 'icons/apple-touch-icon.png'],
       manifest: {
         name: 'Khata (खाता)',
         short_name: 'Khata',

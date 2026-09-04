@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, CornerDownRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CornerDownRight, Sunrise, Sunset } from 'lucide-react'
 
 import { cn } from '#lib/utils'
 import { relativeDayLabel } from '#utils/dates'
@@ -17,6 +17,7 @@ import {
   toBS,
   toDevanagari,
 } from '#utils/nepali'
+import { nepalTime, panchangFor } from '#utils/panchang'
 
 /**
  * A Bikram Sambat month, with the Gregorian day carried under each date.
@@ -58,6 +59,17 @@ export function NepaliCalendar({ className }: { className?: string }) {
 
   const firstDay = useMemo(() => fromBS(view.year, view.month, 1), [view.year, view.month])
   const length = bsDaysInMonth(view.year, view.month)
+
+  // One astronomical scan per visible month (~30 sunrise/sunset solves,
+  // ~70ms) — affordable because it only reruns when the user actually
+  // changes month, not on every render.
+  const tithiByDay = useMemo(() => {
+    const map = new Map<number, string>()
+    for (let day = 1; day <= length; day++) {
+      map.set(day, panchangFor(fromBS(view.year, view.month, day)).tithis[0].name)
+    }
+    return map
+  }, [view.year, view.month, length])
   const leading = firstDay.getDay()
   const showingToday = view.year === today.year && view.month === today.month
 
@@ -107,7 +119,7 @@ export function NepaliCalendar({ className }: { className?: string }) {
               >
                 {np}
               </div>
-              <div className="text-[8.5px] tracking-[0.06em] text-muted-foreground/70 uppercase">
+              <div className="text-[9px] tracking-[0.06em] text-muted-foreground uppercase">
                 {BS_WEEKDAYS_EN[i]}
               </div>
             </div>
@@ -127,6 +139,7 @@ export function NepaliCalendar({ className }: { className?: string }) {
             const isToday = showingToday && day === today.day
             const isSelected = day === selected.day
             const weekend = ad.getDay() === SATURDAY
+            const tithi = tithiByDay.get(day)
 
             return (
               <button
@@ -135,8 +148,8 @@ export function NepaliCalendar({ className }: { className?: string }) {
                 onClick={() => setSelected({ ...view, day })}
                 aria-pressed={isSelected}
                 aria-label={`${day} ${BS_MONTHS[view.month - 1]} ${view.year}${
-                  onDay.length > 0 ? ` — ${onDay.map((f) => f.name).join(', ')}` : ''
-                }`}
+                  tithi ? `, tithi ${tithi}` : ''
+                }${onDay.length > 0 ? ` — ${onDay.map((f) => f.name).join(', ')}` : ''}`}
                 className={cn(
                   'flex aspect-square flex-col items-center justify-center rounded-lg border transition',
                   isToday
@@ -158,19 +171,29 @@ export function NepaliCalendar({ className }: { className?: string }) {
                 </span>
                 <span
                   className={cn(
-                    'mt-1 text-[9.5px] leading-none tabular-nums',
-                    isToday ? 'opacity-80' : 'text-muted-foreground',
+                    'mt-1 text-[10.5px] leading-none font-medium tabular-nums',
+                    isToday ? 'opacity-95' : 'text-foreground/75',
                   )}
                 >
                   {ad.getDate() === 1
                     ? ad.toLocaleDateString(undefined, { month: 'short' })
                     : ad.getDate()}
                 </span>
+                {tithi && (
+                  <span
+                    className={cn(
+                      'mt-0.5 max-w-full truncate text-[8.5px] leading-none font-medium',
+                      isToday ? 'opacity-85' : 'text-muted-foreground',
+                    )}
+                  >
+                    {tithi}
+                  </span>
+                )}
                 {/* Reserved whether or not it is filled, so a festival day is
                     not a pixel taller than its neighbours. */}
                 <span
                   className={cn(
-                    'mt-1 h-1 w-1 rounded-full',
+                    'mt-0.5 h-1 w-1 rounded-full',
                     onDay.length === 0
                       ? 'bg-transparent'
                       : isToday
@@ -207,8 +230,16 @@ function SelectedDay({
   isToday: boolean
   onBackToToday?: () => void
 }) {
-  const ad = fromBS(selection.year, selection.month, selection.day)
+  const ad = useMemo(
+    () => fromBS(selection.year, selection.month, selection.day),
+    [selection.year, selection.month, selection.day],
+  )
   const days = Math.round((ad.getTime() - startOfToday()) / 86_400_000)
+  // One astronomical scan for the tapped day only — never the whole month,
+  // which is what makes this affordable to compute on every tap.
+  const panchang = useMemo(() => panchangFor(ad), [ad])
+  const tithi = panchang.tithis[0]
+  const nakshatra = panchang.nakshatras[0]
 
   return (
     <div className="border-t border-rule-soft bg-muted/35 px-3.5 py-3">
@@ -236,6 +267,35 @@ function SelectedDay({
           {relativeDayLabel(days)}
         </span>
       </div>
+
+      <dl className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px]">
+        <div className="flex items-baseline gap-1">
+          <dt className="text-muted-foreground">तिथि</dt>
+          <dd>
+            <span className="font-devanagari">
+              {panchang.paksha.nameNp} {tithi.nameNp}
+            </span>
+            <span className="text-muted-foreground"> · {tithi.name}</span>
+          </dd>
+        </div>
+        <div className="flex items-baseline gap-1">
+          <dt className="text-muted-foreground">नक्षत्र</dt>
+          <dd>
+            <span className="font-devanagari">{nakshatra.nameNp}</span>
+            <span className="text-muted-foreground"> · {nakshatra.name}</span>
+          </dd>
+        </div>
+        <div className="flex items-center gap-3 tabular-nums">
+          <span className="inline-flex items-center gap-1">
+            <Sunrise size={12} className="text-gold" />
+            {panchang.sunrise ? nepalTime(panchang.sunrise) : '—'}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <Sunset size={12} className="text-muted-foreground" />
+            {panchang.sunset ? nepalTime(panchang.sunset) : '—'}
+          </span>
+        </div>
+      </dl>
 
       {festivals.length > 0 ? (
         <ul className="mt-2.5 space-y-1.5">

@@ -1,12 +1,14 @@
 import { useMemo } from 'react'
+import { Link } from 'react-router'
+import { ChevronRight } from 'lucide-react'
 
 import { DateSystemToggle } from '#components/DateSystemToggle'
 import { InstallHint } from '#components/InstallHint'
 import { NepaliCalendar } from '#components/NepaliCalendar'
 import { Page, SectionHeading } from '#components/Page'
-import { Panchang } from '#components/Panchang'
 import { TodayPanchang } from '#components/TodayPanchang'
 import { Card } from '#components/ui/card'
+import { routePath } from '#root/hooks/useRouting'
 import { useDateSystem } from '#store/preferences'
 import { relativeDayLabel } from '#utils/dates'
 import type { FestivalDay } from '#utils/festivals'
@@ -55,17 +57,25 @@ function Home() {
       <div className="pt-5">
         <NepaliCalendar className="mb-5" />
 
-        <SectionHeading aside="Kathmandu · NPT">Today’s panchang</SectionHeading>
-        <TodayPanchang className="mb-5" />
-
-        <SectionHeading>Coming up</SectionHeading>
+        <SectionHeading
+          aside={
+            <Link
+              to={routePath('panchang')}
+              className="inline-flex items-center gap-0.5 font-medium text-primary"
+            >
+              View all <ChevronRight size={12} />
+            </Link>
+          }
+        >
+          Coming up
+        </SectionHeading>
 
         {soon.length === 0 ? (
-          <Card className="px-4 py-5 text-[13px] text-muted-foreground">
+          <Card className="mb-5 px-4 py-5 text-[13px] text-muted-foreground">
             No festivals listed for the months ahead yet.
           </Card>
         ) : (
-          <Card className="overflow-hidden">
+          <Card className="mb-5 overflow-hidden">
             <ul className="divide-y divide-rule-soft">
               {soon.map((festival) => (
                 <FestivalRow
@@ -78,10 +88,8 @@ function Home() {
           </Card>
         )}
 
-        <div className="mt-5">
-          <SectionHeading aside="Fixed and lunar dates">The year’s panchang</SectionHeading>
-          <Panchang />
-        </div>
+        <SectionHeading aside="Kathmandu · NPT">Today’s panchang</SectionHeading>
+        <TodayPanchang />
       </div>
     </Page>
   )

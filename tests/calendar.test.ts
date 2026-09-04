@@ -138,7 +138,8 @@ describe('festivals', () => {
   it('looks forward across the month and year boundary', () => {
     const soon = upcomingFestivals({ year: 2083, month: 12, day: 20, weekday: 0 }, 2)
     expect(soon).toHaveLength(2)
-    expect(soon[0]).toMatchObject({ year: 2084, month: 1, id: 'new-year' })
+    expect(soon[0]).toMatchObject({ year: 2083, month: 12, id: 'ghode-jatra' })
+    expect(soon[1]).toMatchObject({ year: 2084, month: 1, id: 'new-year' })
   })
 
   it('returns nothing for a year outside the table', () => {

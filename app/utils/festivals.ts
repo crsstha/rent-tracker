@@ -1,6 +1,7 @@
 import { daysBetween, startOfDay } from './dates'
 import type { BSDate } from './nepali'
 import { bsDaysInMonth, fromBS, isBSYearSupported } from './nepali'
+import { panchangFor } from './panchang'
 
 /**
  * Nepali festivals and public holidays for the calendar.
@@ -179,15 +180,20 @@ const MOVABLE: Record<number, [month: number, day: number, id: string][]> = {
     [6, 25, 'ghatasthapana'],
     [7, 1, 'fulpati'],
     [7, 2, 'maha-ashtami'],
-    [7, 4, 'dashami'],
+    [7, 5, 'dashami'],
     [7, 9, 'kojagrat'],
     [7, 23, 'laxmi-puja'],
     [7, 25, 'mha-puja'],
     [7, 26, 'bhai-tika'],
     [7, 30, 'chhath'],
-    [9, 8, 'yomari-punhi'],
+    [9, 9, 'yomari-punhi'],
     [11, 22, 'shivaratri'],
-    [12, 8, 'holi'],
+    [12, 7, 'holi'],
+    [12, 23, 'ghode-jatra'],
+    // Ram Navami (Chaitra Shukla Navami) doesn't fall within BS 2083 at
+    // all — it lands on 2 Baisakh 2084 (15 Apr 2027), just past New Year.
+    // No entry here rather than a wrong one; add it under a 2084 table
+    // instead, once that year gets transcribed.
   ],
 }
 
@@ -233,6 +239,92 @@ export function festivalsOnBS(year: number, month: number, day: number): Festiva
   return festivalsInBSMonth(year, month).filter((f) => f.day === day)
 }
 
+/**
+ * Vrats pinned to a *tithi*, not a calendar date — "the Ekadashi of Bhadra",
+ * not "Bhadra 22". Unlike `MOVABLE` these never need re-transcribing: a tithi
+ * is computed by `panchangFor` for any day of any year, so once a (month,
+ * tithi) → name mapping is verified against a published panchang it holds
+ * forever.
+ *
+ * `tithiIndex` follows panchang.ts's numbering: 0–13 waxing (Shukla)
+ * Pratipada..Chaturdashi, 14 Purnima, 15–28 waning (Krishna)
+ * Pratipada..Chaturdashi, 29 Amavasya.
+ *
+ * Deliberately sparse and Ekadashi/Amavasya-only for now: those two verified
+ * exactly against a real reference (Aja Ekadashi on Bhadra 22, Kushe Aunsi on
+ * Bhadra 26, both cross-checked against 2083 BS). A Panchami-based entry
+ * (Rishi Panchami) was tried and dropped — a plain "tithi standing at
+ * sunrise" lookup put it a day off (Bhadra 31, not the correct 30), because
+ * that vrat follows a "which tithi prevails the day" rule rather than a pure
+ * sunrise one. Trust the mechanism for Ekadashi/Amavasya; don't extend it to
+ * other tithi types without the same kind of verification. A wrong religious
+ * date is worse than a missing one — verify before adding an entry, the same
+ * discipline `MOVABLE` already asks for.
+ */
+const NAMED_TITHIS: Record<number, { tithiIndex: number; festival: Festival }[]> = {
+  1: [
+    // Baisakh Krishna Amavasya — "Mother's day", same Amavasya mechanism as
+    // Kushe Aunsi below, but this exact day isn't independently verified yet.
+    {
+      tithiIndex: 29,
+      festival: {
+        id: 'matatirtha-aunsi',
+        name: 'Matatirtha Aunsi',
+        nameNp: 'माततीर्थ औंसी',
+        holiday: true,
+      },
+    },
+  ],
+  5: [
+    {
+      tithiIndex: 25,
+      festival: { id: 'aja-ekadashi', name: 'Aja Ekadashi', nameNp: 'अजा एकादशी' },
+    },
+    {
+      tithiIndex: 29,
+      festival: { id: 'kushe-aunsi', name: 'Kushe Aunsi', nameNp: 'कुशे औंसी', holiday: true },
+    },
+  ],
+}
+
+/**
+ * Session-lived: a month's tithis never change once computed, and recomputing
+ * costs a day-by-day astronomical scan (`panchangFor` does sunrise/sunset
+ * root-finding per day) — worth avoiding on every re-render.
+ */
+const namedTithiCache = new Map<string, FestivalDay[]>()
+
+/**
+ * Named-tithi vrats in one BS month. Only months verified in `NAMED_TITHIS`
+ * cost anything to compute; every other month returns instantly.
+ *
+ * Deliberately not folded into `festivalsInBSMonth`: that function backs the
+ * full-year Panchang view (12 months at once) and the calendar grid, and a
+ * day-by-day astronomical scan across a whole year is too slow to run on
+ * every render. `upcomingFestivals` below is the one caller that wants this.
+ */
+export function namedTithiFestivalsInBSMonth(year: number, month: number): FestivalDay[] {
+  const wanted = NAMED_TITHIS[month]
+  if (!wanted || !isBSYearSupported(year)) return []
+
+  const key = `${year}-${month}`
+  const cached = namedTithiCache.get(key)
+  if (cached) return cached
+
+  const out: FestivalDay[] = []
+  const length = bsDaysInMonth(year, month)
+  for (let day = 1; day <= length; day++) {
+    const tithiIndex = panchangFor(fromBS(year, month, day)).tithis[0].index
+    for (const { tithiIndex: want, festival } of wanted) {
+      if (tithiIndex === want) out.push({ ...festival, year, month, day, movable: true })
+    }
+  }
+  out.sort((a, b) => a.day - b.day || a.name.localeCompare(b.name))
+
+  namedTithiCache.set(key, out)
+  return out
+}
+
 /** Every festival in a BS year, oldest first. */
 export function festivalsInBSYear(year: number): FestivalDay[] {
   if (!isBSYearSupported(year)) return []
@@ -255,7 +347,14 @@ export function upcomingFestivals(from: BSDate, count = 4): FestivalDay[] {
   let { year, month } = from
 
   for (let step = 0; step < 13 && out.length < count; step++) {
-    for (const f of festivalsInBSMonth(year, month)) {
+    const fixed = festivalsInBSMonth(year, month)
+    const vrats = namedTithiFestivalsInBSMonth(year, month)
+    const combined =
+      vrats.length === 0
+        ? fixed
+        : [...fixed, ...vrats].sort((a, b) => a.day - b.day || a.name.localeCompare(b.name))
+
+    for (const f of combined) {
       if (step === 0 && f.day < from.day) continue
       out.push(f)
     }

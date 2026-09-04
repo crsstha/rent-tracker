@@ -29,6 +29,12 @@ const home: RouteConfig = {
   visibility: 'is-anything',
 }
 
+const panchang: RouteConfig = {
+  path: '/panchang',
+  load: () => import('#views/Panchang'),
+  visibility: 'is-anything',
+}
+
 const houses: RouteConfig = {
   path: '/houses',
   load: () => import('#views/Houses'),
@@ -79,6 +85,7 @@ const notFound: RouteConfig = {
 
 const routes = {
   home,
+  panchang,
   houses,
   house,
   tenant,

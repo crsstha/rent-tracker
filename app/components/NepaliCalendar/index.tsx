@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, CornerDownRight, Sunrise, Sunset } from 'lucide-react'
 
 import { cn } from '#lib/utils'
@@ -41,6 +41,9 @@ interface Selection {
 export function NepaliCalendar({ className }: { className?: string }) {
   const today = useMemo(() => toBS(new Date()), [])
   const [selected, setSelected] = useState<Selection>(today)
+  // Which way the month grid should slide in from — set right before the
+  // month changes, read by the grid's `key`ed remount below.
+  const [direction, setDirection] = useState<1 | -1>(1)
 
   const view = { year: selected.year, month: selected.month }
   const festivals = useMemo(
@@ -80,7 +83,31 @@ export function NepaliCalendar({ className }: { className?: string }) {
   function step(n: number) {
     const next = addBSMonths(view.year, view.month, n)
     if (!isBSYearSupported(next.year)) return
+    setDirection(n > 0 ? 1 : -1)
     setSelected({ ...next, day: Math.min(selected.day, bsDaysInMonth(next.year, next.month)) })
+  }
+
+  // A plain ref rather than state: the start point is read once, on the
+  // matching touchend, and never needs to trigger a render on its own.
+  const touchStart = useRef<{ x: number; y: number } | null>(null)
+
+  function handleTouchStart(e: React.TouchEvent) {
+    const t = e.touches[0]
+    touchStart.current = { x: t.clientX, y: t.clientY }
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    const start = touchStart.current
+    touchStart.current = null
+    if (!start) return
+
+    const t = e.changedTouches[0]
+    const dx = t.clientX - start.x
+    const dy = t.clientY - start.y
+
+    // Mostly-vertical or too-short a drag is a scroll, not a page turn.
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+    step(dx < 0 ? 1 : -1)
   }
 
   return (
@@ -107,7 +134,12 @@ export function NepaliCalendar({ className }: { className?: string }) {
         </Step>
       </header>
 
-      <div className="px-2 pt-2.5 pb-2">
+      <div
+        className="px-2 pt-2.5 pb-2"
+        style={{ touchAction: 'pan-y' }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         <div className="mb-1 grid grid-cols-7">
           {BS_WEEKDAYS_NP.map((np, i) => (
             <div key={np} className="text-center">
@@ -126,7 +158,16 @@ export function NepaliCalendar({ className }: { className?: string }) {
           ))}
         </div>
 
-        <div className="grid grid-cols-7 gap-1">
+        <div
+          // Remounts on every month change, which is what makes the slide
+          // replay each time rather than only on first mount.
+          key={`${view.year}-${view.month}`}
+          className={cn(
+            'grid grid-cols-7 gap-1',
+            'animate-in duration-200 fade-in',
+            direction === 1 ? 'slide-in-from-right-6' : 'slide-in-from-left-6',
+          )}
+        >
           {Array.from({ length: leading }, (_, i) => (
             <div key={`pad-${i}`} />
           ))}

@@ -16,10 +16,12 @@ import {
 } from '#components/ui/select'
 import { toast } from '#components/ui/sonner'
 import { Textarea } from '#components/ui/textarea'
+import { UtilityFields } from '#components/UtilityFields'
 import { useTenant } from '#hooks/useData'
 import { recordPayment, removePayment } from '#lib/actions'
 import { detectMethod, useDateSystem, usePreferences } from '#store/preferences'
 import { useUI } from '#store/ui'
+import { type BillInput, billLines, blankBillInput, computeBill } from '#utils/billing'
 import { formatDayIn, monthShortIn } from '#utils/calendar'
 import { formatMoney } from '#utils/format'
 import { money, OverpaymentError } from '#utils/payments'
@@ -29,6 +31,9 @@ import type { HistoryEntry, PaymentMethod } from '#types'
 
 /**
  * Record one instalment against a month.
+ *
+ * A month that has no itemised bill yet can pick up water, electricity and
+ * garbage here, so the charge is right even when nobody generated a bill.
  *
  * The amount is capped at what the month still owes: partial payments are the
  * point, overpayment is not. The cap is re-checked inside the write
@@ -51,6 +56,7 @@ export function PaymentSheet() {
   const [notesFocused, setNotesFocused] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [utilities, setUtilities] = useState<BillInput | null>(null)
 
   const open = Boolean(target && tenant)
 
@@ -65,9 +71,23 @@ export function PaymentSheet() {
   }, [tenant, target?.month])
 
   const entry: HistoryEntry | undefined = tenant && month ? entryFor(tenant, month) : undefined
-  const charge = entry ? money(entry.totalAmount) : money(tenant?.rent ?? 0)
+  const baseCharge = entry ? money(entry.totalAmount) : money(tenant?.rent ?? 0)
   const paid = entry ? money(entry.amountPaid) : 0
+  // A generated bill already itemises its utilities, and a settled month is
+  // closed — only an open, un-itemised month can take them on here.
+  const canAddUtilities = !entry?.breakdown && baseCharge - paid > 0
+  const draftBreakdown =
+    utilities && canAddUtilities
+      ? computeBill({ ...utilities, rent: baseCharge, arrearsEnabled: false, arrears: [] })
+      : null
+  const charge = draftBreakdown ? draftBreakdown.subtotal : baseCharge
   const remaining = Math.max(0, charge - paid)
+  const breakdown = entry?.breakdown ?? draftBreakdown
+  // This month's own lines only — carried-over dues are booked on their own months.
+  const lines =
+    breakdown && breakdown.subtotal > breakdown.rent
+      ? billLines({ ...breakdown, arrears: undefined })
+      : []
 
   // Re-arm the form each time the sheet is opened for a new month.
   useEffect(() => {
@@ -80,6 +100,13 @@ export function PaymentSheet() {
     setError('')
     setBusy(false)
   }, [target?.tenantId, target?.month])
+
+  // Utilities start blank for every month picked, with the meter pre-filled.
+  useEffect(() => {
+    if (!tenant) return
+    setUtilities({ ...blankBillInput(tenant), arrearsEnabled: false, arrears: [] })
+    // Only a new month (or a new tenant) should reset what was typed.
+  }, [tenant?.id, month])
 
   // Default to clearing the month outright — the common case at the counter.
   useEffect(() => {
@@ -119,7 +146,8 @@ export function PaymentSheet() {
         method,
         reference,
         note,
-        totalAmount: charge,
+        totalAmount: baseCharge,
+        utilities: draftBreakdown && utilities ? utilities : undefined,
       })
       close()
       toast.success(
@@ -184,8 +212,26 @@ export function PaymentSheet() {
           </Select>
         </Field>
 
+        {canAddUtilities && utilities && draftBreakdown && (
+          <UtilityFields
+            input={utilities}
+            set={(key, value) => setUtilities((prev) => (prev ? { ...prev, [key]: value } : prev))}
+            breakdown={draftBreakdown}
+          />
+        )}
+
         {/* Running balance — charged, collected, and what's left. */}
         <div className="rounded-card border border-border bg-card px-4 py-3">
+          {lines.length > 0 && (
+            <ul className="mb-2 space-y-1 border-b border-rule-soft pb-2 text-[13px]">
+              {lines.map((line) => (
+                <li key={line.label} className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{line.label}</span>
+                  <span>{formatMoney(line.amount)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="flex items-baseline justify-between text-[14px]">
             <span className="text-muted-foreground">Charged for {monthShortIn(month, system)}</span>
             <span className="font-medium">{formatMoney(charge)}</span>

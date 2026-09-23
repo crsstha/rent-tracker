@@ -197,6 +197,12 @@ export async function markPaid(id: string, month = monthKey()): Promise<void> {
 export interface RecordPaymentInput extends PaymentDraft {
   /** Charge to open the month at, when it has never been billed. */
   totalAmount?: number
+  /**
+   * Water, electricity and garbage added at the counter. Only applied to a
+   * month that has no itemised bill yet — a generated bill already carries
+   * its utilities, and charging them twice is exactly what this guards.
+   */
+  utilities?: BillInput
 }
 
 /**
@@ -213,10 +219,41 @@ export async function recordPayment(
   input: RecordPaymentInput,
 ): Promise<HistoryEntry> {
   return withTenant(id, async (tenant) => {
-    const entry = addPayment(chargeFor(tenant, month, input.totalAmount), input)
-    await applyHistory(tenant, upsertEntry(tenant.history, entry))
+    let charge = chargeFor(tenant, month, input.totalAmount)
+    let carry: Partial<Tenant> = {}
+
+    if (input.utilities && !charge.breakdown) {
+      // Rent stays whatever the month was already charged; utilities go on top.
+      const breakdown = computeBill({
+        ...input.utilities,
+        rent: charge.totalAmount,
+        arrearsEnabled: false,
+        arrears: [],
+      })
+      if (breakdown.subtotal > charge.totalAmount) {
+        charge = recalcEntry({ ...charge, totalAmount: breakdown.subtotal, breakdown })
+        carry = meterCarry(input.utilities)
+      }
+    }
+
+    const entry = addPayment(charge, input)
+    const sorted = sortHistory(upsertEntry(tenant.history, entry))
+    await tenants.update(tenant.id, { history: sorted, ...lastSettled(sorted), ...carry })
     return entry
   })
+}
+
+/** Carry the meter reading + rate forward so the next bill pre-fills them. */
+function meterCarry(input: BillInput): Partial<Tenant> {
+  const carry: Partial<Tenant> = {}
+  if (input.elecEnabled) {
+    carry.elecMode = input.elecMode
+    carry.elecRate = input.elecRate
+    if (input.elecMode === 'units' && input.elecCurr !== null) {
+      carry.elecPrevUnit = Number(input.elecCurr)
+    }
+  }
+  return carry
 }
 
 /** Remove one instalment; the month falls back to partly paid or unpaid. */
@@ -346,9 +383,9 @@ export interface GeneratedBill {
 
 export interface GenerateBillOptions {
   /**
-   * Amount handed over now. Defaults to the whole bill — the till-side case
-   * where the tenant clears it on the spot. Anything less is spread oldest
-   * month first, leaving the remainder outstanding.
+   * Amount handed over now. Defaults to nothing — a bill is raised unpaid
+   * unless money actually changed hands. Anything short of the total is
+   * spread oldest month first, leaving the remainder outstanding.
    */
   collected?: number
   method?: Payment['method']
@@ -390,7 +427,7 @@ export async function generateBill(
       { month, due: billingMonthDue },
     ]
 
-    const collected = money(options.collected ?? breakdown.total)
+    const collected = money(options.collected ?? 0)
     const allocations = allocate(collected, targets)
     const paidFor = new Map(allocations.map((a) => [a.month, a.amount]))
 
@@ -436,15 +473,7 @@ export async function generateBill(
       )
     }
 
-    const carry: Partial<Tenant> = {}
-    if (input.elecEnabled) {
-      carry.elecMode = input.elecMode
-      carry.elecRate = input.elecRate
-      if (input.elecMode === 'units' && input.elecCurr !== null) {
-        carry.elecPrevUnit = Number(input.elecCurr)
-      }
-    }
-
+    const carry = meterCarry(input)
     const sorted = sortHistory(history)
     const patch = { history: sorted, ...lastSettled(sorted), ...carry }
     await tenants.update(tenant.id, patch)

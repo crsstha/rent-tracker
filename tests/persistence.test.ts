@@ -16,7 +16,7 @@ import {
 } from '#lib/actions'
 import { houses, tenants } from '#lib/db'
 import { BackupParseError, exportBackup, importBackup, parseBackup, wipeAll } from '#lib/db/backup'
-import { blankBillInput } from '#utils/billing'
+import { blankBillInput, computeBill } from '#utils/billing'
 import { addMonths, monthKey, recentMonths } from '#utils/dates'
 import { OverpaymentError } from '#utils/payments'
 import { entryFor, tenantStatus, unpaidMonths } from '#utils/status'
@@ -63,6 +63,44 @@ describe('marking paid', () => {
 })
 
 describe('recording part payments', () => {
+  it('adds water, electricity and garbage to an unbilled month', async () => {
+    const { tenantId, get } = await seed()
+    const tenant = await get()
+    const entry = await recordPayment(tenantId, THIS_MONTH, {
+      amount: 5000,
+      utilities: {
+        ...blankBillInput(tenant),
+        waterEnabled: true,
+        water: 500,
+        garbageEnabled: true,
+        garbage: 200,
+        elecEnabled: true,
+        elecMode: 'units',
+        elecPrev: 100,
+        elecCurr: 150,
+        elecRate: 12,
+      },
+    })
+
+    expect(entry.totalAmount).toBe(12000 + 500 + 200 + 600)
+    expect(entry.breakdown?.electricity.units).toBe(50)
+    expect(entry.amountDue).toBe(13300 - 5000)
+    expect(entry.paymentStatus).toBe('partially_paid')
+    expect((await get()).elecPrevUnit).toBe(150)
+  })
+
+  it('never re-adds utilities to a month that already has a bill', async () => {
+    const { tenantId, get } = await seed()
+    const tenant = await get()
+    await generateBill(tenantId, { ...blankBillInput(tenant), waterEnabled: true, water: 500 })
+
+    const entry = await recordPayment(tenantId, THIS_MONTH, {
+      amount: 1000,
+      utilities: { ...blankBillInput(tenant), waterEnabled: true, water: 500 },
+    })
+    expect(entry.totalAmount).toBe(12500)
+  })
+
   it('leaves the month outstanding for its balance', async () => {
     const { tenantId, get } = await seed()
     await recordPayment(tenantId, THIS_MONTH, { amount: 5000, method: 'wallet', reference: 'ES-1' })
@@ -245,20 +283,44 @@ describe('settling arrears', () => {
 })
 
 describe('generating a bill', () => {
-  it('marks the month paid, stores the breakdown, and carries the meter forward', async () => {
+  it('raises the bill unpaid unless money was collected', async () => {
     const { tenantId, get } = await seed()
     const tenant = await get()
     const bill = await generateBill(tenantId, {
       ...blankBillInput(tenant),
-      arrearsEnabled: false,
       waterEnabled: true,
       water: 500,
-      elecEnabled: true,
-      elecMode: 'units',
-      elecPrev: 1200,
-      elecCurr: 1290,
-      elecRate: 12,
     })
+
+    expect(bill.collected).toBe(0)
+    const t = await get()
+    const entry = entryFor(t, THIS_MONTH)!
+    expect(entry.totalAmount).toBe(12500)
+    expect(entry.paymentStatus).toBe('unpaid')
+    expect(entry.payments).toHaveLength(0)
+    expect(t.lastPaidMonth).toBeNull()
+    expect(tenantStatus(t).arrearsAmount).toBe(12500)
+  })
+
+  it('marks the month paid when collected in full, and carries the meter forward', async () => {
+    const { tenantId, get } = await seed()
+    const tenant = await get()
+    const bill = await generateBill(
+      tenantId,
+      {
+        ...blankBillInput(tenant),
+        arrearsEnabled: false,
+        waterEnabled: true,
+        water: 500,
+        elecEnabled: true,
+        elecMode: 'units',
+        elecPrev: 1200,
+        elecCurr: 1290,
+        elecRate: 12,
+      },
+      THIS_MONTH,
+      { collected: 13580 },
+    )
 
     expect(bill.breakdown.total).toBe(13580)
     expect(bill.collected).toBe(13580)
@@ -277,10 +339,10 @@ describe('generating a bill', () => {
     const tenant = await get()
     const owed = unpaidMonths(tenant)
 
-    const bill = await generateBill(tenantId, {
-      ...blankBillInput(tenant),
-      waterEnabled: true,
-      water: 500,
+    const input = { ...blankBillInput(tenant), waterEnabled: true, water: 500 }
+    const arrears = input.arrears.filter((m) => m.month !== THIS_MONTH)
+    const bill = await generateBill(tenantId, input, THIS_MONTH, {
+      collected: computeBill({ ...input, arrears }).total,
     })
 
     const arrearsMonths = owed.filter((m) => m !== THIS_MONTH)
@@ -347,7 +409,11 @@ describe('generating a bill', () => {
     const tenant = await get()
     const target = addMonths(THIS_MONTH, -1)
 
-    const bill = await generateBill(tenantId, { ...blankBillInput(tenant) }, target)
+    const input = blankBillInput(tenant)
+    const arrears = input.arrears.filter((m) => m.month !== target)
+    const bill = await generateBill(tenantId, input, target, {
+      collected: computeBill({ ...input, arrears }).total,
+    })
 
     const t = await get()
     expect(bill.breakdown.arrears?.months).not.toContain(target)
@@ -360,14 +426,19 @@ describe('backup', () => {
   async function backupJson() {
     const { tenantId, get } = await seed(addMonths(THIS_MONTH, -2))
     const tenant = await get()
-    await generateBill(tenantId, {
-      ...blankBillInput(tenant),
-      elecEnabled: true,
-      elecMode: 'units',
-      elecPrev: 1200,
-      elecCurr: 1290,
-      elecRate: 12,
-    })
+    await generateBill(
+      tenantId,
+      {
+        ...blankBillInput(tenant),
+        elecEnabled: true,
+        elecMode: 'units',
+        elecPrev: 1200,
+        elecCurr: 1290,
+        elecRate: 12,
+      },
+      THIS_MONTH,
+      { collected: 2 * 12000 + 12000 + 90 * 12 },
+    )
     return { json: JSON.stringify(await exportBackup()), tenantId }
   }
 

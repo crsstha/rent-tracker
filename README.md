@@ -27,16 +27,17 @@ against a stale cache. Test PWA behaviour against `npm run preview`.
 ## Deploying
 
 CI runs on every PR and push to `main` (`.github/workflows/ci.yml`: lint, format check, typecheck,
-test, build). `.github/workflows/deploy.yml` then builds and ships to **Cloudflare Pages** via
-`wrangler-action`, using two repository secrets:
+test, build). Deploys are handled by **Cloudflare's Git integration** on the `rent-tracker` Worker
+(`wrangler.jsonc`): every push to `main` is built on Cloudflare with `npm run build` and the
+`dist/` folder is served as static assets, with `not_found_handling` giving the SPA its
+`index.html` fallback. `public/_headers` sets the cache policy.
 
-| Secret                  | Where to find it                                      |
-| ----------------------- | ----------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`  | Cloudflare dashboard → API tokens → _Edit Pages_      |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard → Workers & Pages → account home |
+`VITE_*` variables are inlined at build time, so they belong under the Worker's **Settings → Build
+→ Variables and secrets** in the Cloudflare dashboard, not its runtime variables:
 
-Pull requests deploy to their own branch preview; `main` publishes production. `public/_redirects`
-gives the SPA its `index.html` fallback and `public/_headers` sets the cache policy.
+| Variable                 | Purpose                                       |
+| ------------------------ | --------------------------------------------- |
+| `VITE_GA_MEASUREMENT_ID` | Google Analytics 4 id; leave unset to disable |
 
 `netlify.toml` and `vercel.json` are also still included. Whichever host you use, the important
 parts are:

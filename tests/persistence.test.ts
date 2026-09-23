@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   backfillMonths,
@@ -20,6 +20,12 @@ import { blankBillInput, computeBill } from '#utils/billing'
 import { addMonths, monthKey, recentMonths } from '#utils/dates'
 import { OverpaymentError } from '#utils/payments'
 import { entryFor, tenantStatus, unpaidMonths } from '#utils/status'
+
+// Pin the clock mid-month, past every seeded due day (the 5th). Otherwise the
+// current month isn't owed yet on the 1st–4th and these tests fail on those
+// days only. Only `Date` is faked — IndexedDB still needs real timers.
+vi.useFakeTimers({ toFake: ['Date'] })
+vi.setSystemTime(new Date('2026-09-20T09:00:00'))
 
 const THIS_MONTH = monthKey()
 
@@ -494,6 +500,9 @@ describe('backup', () => {
   })
 
   it('upgrades a v1 month into a settled charge with one instalment', async () => {
+    // Dates relative to last month: a createdAt older than startMonth moves the
+    // tenancy start back and would add a phantom unpaid month.
+    const lastMonth = addMonths(THIS_MONTH, -1)
     const legacy = JSON.stringify({
       app: 'rent-register',
       version: 1,
@@ -506,13 +515,11 @@ describe('backup', () => {
           name: 'Legacy Tenant',
           rent: 8000,
           dueDay: 5,
-          startMonth: addMonths(THIS_MONTH, -1),
-          lastPaidMonth: addMonths(THIS_MONTH, -1),
-          lastPaidDate: '2026-07-05T00:00:00Z',
-          history: [
-            { month: addMonths(THIS_MONTH, -1), date: '2026-07-05T00:00:00Z', amount: 8000 },
-          ],
-          createdAt: '2026-07-01T00:00:00Z',
+          startMonth: lastMonth,
+          lastPaidMonth: lastMonth,
+          lastPaidDate: `${lastMonth}-05T00:00:00Z`,
+          history: [{ month: lastMonth, date: `${lastMonth}-05T00:00:00Z`, amount: 8000 }],
+          createdAt: `${lastMonth}-01T00:00:00Z`,
         },
       ],
     })

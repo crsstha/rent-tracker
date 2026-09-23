@@ -17,6 +17,9 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_STORAGE_BUCKET?: string
   readonly VITE_FIREBASE_MESSAGING_SENDER_ID?: string
   readonly VITE_FIREBASE_APP_ID?: string
+
+  /** Google Analytics 4 measurement id (G-XXXXXXXXXX). Unset = no analytics. */
+  readonly VITE_GA_MEASUREMENT_ID?: string
 }
 
 interface ImportMeta {

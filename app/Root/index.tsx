@@ -3,16 +3,19 @@ import { Outlet } from 'react-router'
 
 import { Toaster } from '#components/ui/sonner'
 import { useAppearanceEffect } from '#hooks/useAppearanceEffect'
+import { usePageViews } from '#hooks/usePageViews'
 
 /**
  * The provider shell: everything that must exist before any route renders.
  *
  * There is no data provider — the repositories in `lib/db` are module
  * singletons and views subscribe to them directly — so this stays small: the
- * theme controller, the toast host, and a Suspense boundary for lazy routes.
+ * theme controller, page-view analytics, the toast host, and a Suspense
+ * boundary for lazy routes.
  */
 function Root() {
   useAppearanceEffect()
+  usePageViews()
 
   return (
     <Suspense fallback={<RouteFallback />}>

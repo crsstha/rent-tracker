@@ -43,6 +43,8 @@ jobs:
         env:
           # The app is local-first; no backend keys are needed to build it.
           VITE_DATA_BACKEND: dexie
+          # Public id, but kept in repo variables so forks don't report into it.
+          VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID }}
 
       # A PR builds a preview on its own branch; main publishes production.
       # Cloudflare Pages decides which is which from the branch name, so the
